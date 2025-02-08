@@ -1,0 +1,7 @@
+# Data files should not be part of the git
+*.nii.gz
+*.p
+*.txt
+
+# Ignore python cache
+__pycache__
