@@ -16,7 +16,7 @@ class RawCT:
         # (this info is stored in the file's affine matrix)
         # we compute the sigma to apply to each axis' sigma for a Gaussian
         # to account for those different voxel side lengths
-        self.sigmas = 1 / np.abs(np.diag(nib_ct.affine[:3,:3] / nib_ct.affine[0,0]))
+        self.voxel_size = np.abs(np.diag(nib_ct.affine[:3,:3] / nib_ct.affine[0,0]))
 
 
 
@@ -69,7 +69,30 @@ def get_inputs(
 
     return raw_ct, electrodes
 
-
+def get_structuring_element(type='cross'):
+    if type == 'cube':
+        return np.ones((3,3,3))
+    elif type == 'cross':
+        return np.array([
+            [
+                [0,0,0],
+                [0,1,0],
+                [0,0,0]
+            ],
+            [
+                [0,1,0],
+                [1,1,1],
+                [0,1,0]
+            ],
+            [
+                [0,0,0],
+                [0,1,0],
+                [0,0,0]
+            ]
+        ])
+    else:
+        raise ValueError(f"Structuring element type must be 'cube' or 'cross'. \
+                         Got: {type}")
 
 
 def log(msg, erase=False):

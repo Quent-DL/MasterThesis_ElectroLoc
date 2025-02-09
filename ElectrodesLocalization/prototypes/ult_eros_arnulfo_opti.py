@@ -8,7 +8,7 @@ from utils import get_inputs, Electrode, RawCT, log
 import numpy as np
 from math import ceil
 from scipy.ndimage import zoom
-from skimage.morphology import binary_erosion, reconstruction
+from scipy.ndimage import binary_erosion, binary_propagation
 from scipy.ndimage import label, center_of_mass
 
 # Visualization
@@ -44,38 +44,72 @@ MAX_ITER = 50
 ##### /\ /\ /\
 
 
-def binary_ultimate_erosion(image: np.ndarray, ks=3):
+def binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
     # Ref: Proakis, G. John
     result = np.zeros_like(image)
-    _ndims = len(image.shape)
-    struct = np.ones((ks,)*_ndims, dtype=np.int32)
 
     while image.sum() > 0:
         eroded        = binary_erosion(image, struct)
-        reconstructed = reconstruction(eroded, image, 'dilation', struct)
+        reconstructed = binary_propagation(eroded, struct, image)
+
         # The xor is equivalent to image - opened if they only 
         # consist of 0's and 1's, knowing that opened < image
         result |= np.logical_xor(image, reconstructed)
         image = eroded
-    return result, struct
+
+    return result
+
+def opti_center_of_mass(weights, labels, index):
+    # Computing the lower and upper bound of the coordinates of the useful box
+    mask = (labels == index)
+    lx = np.where(mask.any(axis=(1, 2)))[0].min()
+    ux = np.where(mask.any(axis=(1, 2)))[0].max() + 1
+    ly = np.where(mask.any(axis=(0, 2)))[0].min()
+    uy = np.where(mask.any(axis=(0, 2)))[0].max() + 1
+    lz = np.where(mask.any(axis=(0, 1)))[0].min()
+    uz = np.where(mask.any(axis=(0, 1)))[0].max() + 1
+
+    # Truncating the useful boxes
+    w_trunc = weights[lx:ux, ly:uy, lz:uz]
+    l_trunc = labels[lx:ux, ly:uy, lz:uz]
+
+    # Computing the center of mass in the truncated box, then adding the offset
+    offset = np.array([lx, ly, lz], dtype=np.float32)
+    trunc_center = np.array(center_of_mass(w_trunc, l_trunc, index), dtype=np.float32)
+    return offset + trunc_center
 
 
-def compute_contacts_centers(raw_ct) -> np.ndarray:
-    # TODO: isolate the part of mask that contains the electrodes
-    # (for smaller image to process)
+def compute_contacts_centers(raw_ct: RawCT, struct: np.ndarray) -> np.ndarray:
+    log("-- Computing ultimate erosion", erase=True)
+    ult_er = binary_ultimate_erosion(raw_ct.mask, struct)
+    labels, n_contacts = label(ult_er)
+    
+    contacts_com = []
+    for i in range(1, n_contacts+1):
+        log(f"-- Contact {i}/{n_contacts}", erase=True)
+        contacts_com.append(opti_center_of_mass(raw_ct.ct, labels, i))
 
-    UF = 2    # upsampling factor
-    # TODO confirm presence of sigmas
-    image = zoom(raw_ct.mask, 1/raw_ct.sigmas, order=0)
+    return np.stack(contacts_com, dtype=np.float32)
+
+
+def compute_contacts_centers_with_upsampling(
+        raw_ct: RawCT, 
+        struct: np.ndarray,
+        upsampling_factor: int) -> np.ndarray:
+    UF = upsampling_factor    # other name
+
+    # TODO confirm presence of voxel_size
+    #image = zoom(raw_ct.mask, raw_ct.voxel_size, order=0)
+    image = raw_ct.mask
 
     nlayers = ceil(image.shape[0] / LAYER_SIZE)
     UP_LAYER_SIZE = UF * LAYER_SIZE    # the layer size in the upsampled image
 
     u_prev = zoom(np.zeros((LAYER_SIZE,)+image.shape[1:], dtype=bool), UF, order=0)    # an empty layer
-    u_curr, struct = binary_ultimate_erosion(
-        zoom(image[:LAYER_SIZE], UF, order=0))
-    u_next, _ = binary_ultimate_erosion(
-        zoom(image[LAYER_SIZE:2*LAYER_SIZE], UF, order=0))
+    u_curr = binary_ultimate_erosion(
+        zoom(image[:LAYER_SIZE], UF, order=0), struct)
+    u_next = binary_ultimate_erosion(
+        zoom(image[LAYER_SIZE:2*LAYER_SIZE], UF, order=0), struct)
 
     # A set to avoid adding twice the same contact from different layers
     centers = set()
@@ -111,11 +145,12 @@ def compute_contacts_centers(raw_ct) -> np.ndarray:
         # Moving up one layer to start again
         u_prev = u_curr
         u_curr = u_next
-        u_next, _ = binary_ultimate_erosion(
-            zoom(image[(lyr+2)*LAYER_SIZE:(lyr+3)*LAYER_SIZE], UF, order=0))
+        u_next = binary_ultimate_erosion(
+            zoom(image[(lyr+2)*LAYER_SIZE:(lyr+3)*LAYER_SIZE], UF, order=0), struct)
         
-    # TODO presence of sigmas
-    return np.stack(list(centers), dtype=np.float32) * raw_ct.sigmas
+    # TODO confirm presence of voxel_size
+    #return np.stack(list(centers), dtype=np.float32) / raw_ct.voxel_size
+    return np.stack(list(centers), dtype=np.float32)
 
 
 def find_closest(
@@ -272,62 +307,41 @@ def visualize_contacts(
     plotter.show()
 
 
-# TODO archive: plots the animation of the ultimate erosion
-def ultimate_erosion_and_plot(raw_ct):
-    # Inputs of function
-    image = raw_ct.mask
-    ks = 3
-
-    # Changing variables
-    results = []
-    remainings = []
-
-    # Ultimate erosion
-    result = np.zeros_like(image)
-    _ndims = len(image.shape)
-    struct = np.ones((ks,)*_ndims, dtype=np.int32)
-    remainings.append(image.copy())
-
-    while image.sum() > 0:
-        eroded        = binary_erosion(image, struct)
-        reconstructed = reconstruction(eroded, image, 'dilation', struct)
-        # The xor is equivalent to image - opened if they only 
-        # consist of 0's and 1's, knowing that opened < image
-        result |= np.logical_xor(image, reconstructed)
-        results.append(result.copy())
-        image = eroded
-        remainings.append(image.copy())
-
-    # Plotting
-    # TODO
-
-
-
 if __name__ == '__main__':
 
-    # Fetching input
+    # -- Fetching input
     log("Loading inputs")
     raw_ct, electrodes = get_inputs(ct_path, ct_mask_path, electrodes_info_path)
 
-    # Preprocessing the mask of the electrodes based on a threshold
-    raw_ct.mask &= raw_ct.ct > ELECTRODE_THRESHOLD
 
-    # Computing the center of mass of the electrode contacts
+    # -- Preprocessing
+    log("Preprocessing input")
+    # TODO confirm: Rescaling the image for isotropic results (equal voxels size)
+    #raw_ct.ct = zoom(raw_ct.ct, raw_ct.voxel_size, order=1)
+    #raw_ct.mask = zoom(raw_ct.mask, raw_ct.voxel_size, order=1)
+    #raw_ct.voxel_size /= raw_ct.voxel_size
+    # Masking the electrodes based on a threshold
+    raw_ct.mask &= raw_ct.ct > ELECTRODE_THRESHOLD
+    # TODO confirm: Dilating the mask
+    #raw_ct.mask = binary_dilation(raw_ct.mask, get_structuring_element('cross'))
+
+
+    # -- Computing the center of mass of the electrode contacts
     log("Computing contact centers")
-    # TODO remove useless if
-    if False:
-        contacts = compute_contacts_centers(raw_ct)
-        path = os.path.join(input_dir, "centers_of_mass_UF2sigma.txt")
+    # TODO remove debugging 'if'
+    if True:
+        struct = get_structuring_element('cube')
+        contacts = compute_contacts_centers(raw_ct, struct)
         np.savetxt(path, contacts)
     else:
         path = os.path.join(input_dir, "centers_of_mass_2.txt")
         contacts = np.loadtxt(path, dtype=np.float32)
 
-    # Classifying the contacts to fill the electrode objects
+    # -- Classifying the contacts to fill the electrode objects
     log("Classifying contacts")
-    dist_func = lambda a, b: np.linalg.norm((a-b)/raw_ct.sigmas)
+    dist_func = lambda a, b: np.linalg.norm((a-b)*raw_ct.voxel_size)
     segment_all_electrodes(electrodes, contacts, dist_func)
 
-    # Vizualizing the result
+    # -- Vizualizing the result
     log("Plotting contacts")
     visualize_contacts(raw_ct, electrodes, contacts)
