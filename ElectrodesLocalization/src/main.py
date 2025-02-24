@@ -2,7 +2,7 @@ import contacts
 import segmentation
 
 
-def main():
+def main(n_electrodes):
     # Fetching the contacts
     contacts = contacts.get_contacts()
 
