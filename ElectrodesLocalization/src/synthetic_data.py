@@ -1,7 +1,7 @@
 import numpy as np
 
 # Coordinates of the contacts in sub04
-CONTACTS_11_GT = np.array([
+__SUB11_E1_GT = np.array([
     # Electrode A
     [210, 261, 93],
     [203, 262, 93],
@@ -15,8 +15,10 @@ CONTACTS_11_GT = np.array([
     [143, 262, 92],
     [134, 261, 92],
     [128, 260, 92],
-    [120, 260, 92]
-    # Electrode B 
+    [120, 260, 92],
+])
+# Electrode B
+__SUB11_E2_GT = np.array([
     [168, 222, 100],
     [172, 218, 102],
     [175, 211, 104],
@@ -34,7 +36,9 @@ CONTACTS_11_GT = np.array([
     [214, 140, 133],
     [218, 134, 135],
     [222, 131, 137], # ... Keeps going but is probe ?
-    # Electrode C
+])
+# Electrode C
+__SUB11_E3_GT = np.array([
     [256, 145, 114],
     [248, 143, 115],
     [241, 139, 116],
@@ -47,7 +51,9 @@ CONTACTS_11_GT = np.array([
     [192, 121, 122],
     [185, 118, 123],
     [177, 115, 124],
-    # Electrode D
+])
+# Electrode D
+__SUB11_E4_GT = np.array([
     [257, 159, 135],
     [249, 158, 137],
     [242, 158, 139],
@@ -61,8 +67,10 @@ CONTACTS_11_GT = np.array([
     [186, 148, 153],
     [178, 146, 155],
     [170, 146, 157],
-    [163, 145, 158]
-    # Electrode E
+    [163, 145, 158],
+])
+# Electrode E
+__SUB11_E5_GT = np.array([
     [257, 179, 144],
     [249, 178, 145],
     [242, 178, 146],
@@ -79,5 +87,15 @@ CONTACTS_11_GT = np.array([
     [165, 185, 161],
     [158, 185, 163],
     [150, 186, 164],
-    [142, 184, 166]
+    [142, 184, 166],
 ], dtype=np.float32)
+
+SUB11_ELECTRODES_GT = [
+    __SUB11_E1_GT,
+    __SUB11_E2_GT,
+    __SUB11_E3_GT,
+    __SUB11_E4_GT,
+    __SUB11_E5_GT
+]
+
+SUB_11_VOXEL_SIZE = np.array([1, 1, 4/3])
