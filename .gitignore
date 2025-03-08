@@ -5,3 +5,6 @@
 
 # Ignore python cache
 __pycache__
+
+# Ignore work-in-progress files
+*.ipynb
