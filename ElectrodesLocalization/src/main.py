@@ -1,6 +1,5 @@
 import contacts_isolation
 import segmentation
-import synthetic_data
 import plot
 from utils import NibCTWrapper, log
 import os

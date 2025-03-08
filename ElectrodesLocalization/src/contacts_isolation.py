@@ -1,4 +1,4 @@
-import synthetic_data
+import hardcoded_data
 import numpy as np
 from scipy.ndimage import (binary_erosion, binary_propagation,
                            label, center_of_mass)
@@ -154,7 +154,7 @@ def get_contacts(
     (False) or quickly return a set of synthetic and constant coordinates (True)."""
     if synthetic:
         rng = np.random.default_rng(seed=42)
-        all_contacts = np.concatenate(synthetic_data.SUB11_ELECTRODES_GT)
+        all_contacts = np.concatenate(hardcoded_data.SUB11_ELECTRODES_GT)
         return rng.permutation(all_contacts)
 
     assert ct_object is not None, "If 'synthetic' is set to False, then \
