@@ -1,7 +1,8 @@
-from sklearn.cluster import KMeans, SpectralClustering
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 import numpy as np
 from numpy.linalg import norm
-from utils import Electrode
+from utils import Electrode, log
 from typing import List
 from sklearn.linear_model import LinearRegression
 
@@ -178,7 +179,7 @@ def __feature_proj_plane_new(contacts, xval=0, k=3):
         data = np.concatenate([neigh, contacts[np.newaxis,:]])
         intercepts = []
         dirs = []
-        # Fitting one regression for each 
+        # Fitting one regression for each set of contact and neighbors
         for i in range(contacts.shape[0]):
             x = data[:,i,:1]
             y = data[:,i,1:]
@@ -236,8 +237,8 @@ def __extract_features(
         features.append(f1)
         features.append(f2)
     if "proj_plane_new" in feat_list:
-        f1 = __feature_proj_plane_new(contacts, xval=contacts[:,0].min(), k=3)
-        f2 = __feature_proj_plane_new(contacts, xval=contacts[:,0].max(), k=3)
+        f1 = __feature_proj_plane_new(contacts, xval=contacts[:,0].min(), k=4)
+        f2 = __feature_proj_plane_new(contacts, xval=contacts[:,0].max(), k=4)
         features.append(f1)
         features.append(f2)
 
@@ -277,13 +278,77 @@ def segment_electrodes(
     # Applying KMeans to retrieve 'labels', an array of shape (N,) that
     # contains the label of each contact (label is in range [0, n_electrodes))
     # The label is the id of the electrode
-    kmeans = KMeans(n_clusters=n_electrodes)
-    labels = kmeans.fit_predict(features)
+    
+    #kmeans = KMeans(n_clusters=2*n_electrodes)
+    #labels = kmeans.fit_predict(features)
+
+    gauss_mixt = GaussianMixture(
+        n_components=2*n_electrodes,
+        covariance_type='full',
+        n_init=5,
+        init_params='k-means++'
+    )
+    labels = gauss_mixt.fit_predict(features)
+
+    labels = postprocess(contacts, labels, n_electrodes)
 
     # Constructing the electrodes one by one
     electrodes = []
-    for e in range(n_electrodes):
+    for e in np.unique(labels):
         relevant_contacts = contacts[labels == e]
         electrodes.append(Electrode(relevant_contacts, ct_shape))
 
     return electrodes
+
+
+
+### POST PROCESSING
+
+def postprocess(contacts, labels, n_electrodes):
+    log("Postprocessing electrodes")
+    labels = labels.copy()
+    # TODO
+    uniques = np.unique(labels)
+    while len(uniques) > n_electrodes:
+        # Regress electrode-wise
+        def __get_regression(l):
+            data = contacts[labels == l]    # shape (K, 3)
+
+            x = data[:,(1,)]
+            y = data[:,(0,2)]
+            model = LinearRegression(fit_intercept=True)
+            model.fit(x, y)
+
+            return model.intercept_, model.coef_.ravel()
+        
+        inters, dirs = [], []
+        for l in uniques:
+            inter, dir = __get_regression(l)    # Shapes (2,) and (2,)
+            inters.append(inter)
+            dirs.append(dir)
+        inters = np.stack(inters)    # Shape (K, 2)
+        dirs   = np.stack (dirs)
+
+        # Project onto both planes (x-max and x-min)
+        proj_min = inters + contacts[1,:].min() * dirs
+        proj_max = inters + contacts[1,:].max() * dirs
+        projs = np.concatenate([proj_min, proj_max], axis=1)    # Shape (K, 4)
+
+
+        # Distance map
+        diff = projs[:, np.newaxis, :] - projs[np.newaxis, :, :]
+        distance_map = np.sqrt(np.sum(diff**2, axis=-1))
+        n = len(uniques)
+        distance_map[range(n), range(n)] = distance_map.max()
+        
+
+        # Selects two closest electrodes (= projections)
+        i, j = np.unravel_index(distance_map.argmin(), distance_map.shape)
+
+        # Merge similar electrodes
+        li = uniques[i]
+        lj = uniques[j]
+        labels[labels == lj] = li
+        uniques = np.unique(labels)
+
+    return labels

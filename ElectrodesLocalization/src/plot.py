@@ -9,12 +9,24 @@ import numpy as np
 from typing import List
 
 __COLOR_PALETTE = [
+    (0, 0, 0),         # black
+    (142, 202, 230),   # cyan
+    (78, 78, 255),     # blue
+    (255, 255, 0),     # yellow
+    (251, 150, 0),     # orange
+    (120, 0, 0),       # dark pink
+    (255, 0, 0),       # red
+    (253, 240, 213),   # cream
+
+    (236, 78, 32),     # flame
+    (28, 58, 19),      # pakistan green,
+    (255, 255, 255),   # white
+
     (0, 114, 178),
     #(86, 180, 233),
     (240, 228, 66),
     (213, 94, 0),
     (204, 121, 167),
-    (0, 0, 0),
     (51, 117, 56),
     (221, 221, 221),
     (0, 156, 115),
@@ -40,7 +52,7 @@ def plot_colored_electrodes(
         if i < len(__COLOR_PALETTE):
             color = __COLOR_PALETTE[i]
         else:
-            color = [random.random() for _ in range(3)]        # random electrode color
+            color = [random.randint(0,255) for _ in range(3)]        # random electrode color
 
         point_cloud = pv.PolyData(e.contacts)
         plotter.add_points(point_cloud, color=color, point_size=15.0, 
@@ -64,7 +76,8 @@ def plot_binary_electrodes(
     mesh_ct = pv.wrap(ct_mask)
     mesh_ct.cell_data['intensity'] = ct_mask[:-1, :-1, :-1].flatten(order='F')
     vol = mesh_ct.threshold(value=1, scalars='intensity')
-    plotter.add_mesh(vol, cmap='Blues', scalars='intensity', opacity=0.1)
+    plotter.add_mesh(vol, cmap='Blues', scalars='intensity', opacity=0.075)
+
     return plotter
 
 def plot_ct(
@@ -72,4 +85,12 @@ def plot_ct(
         plotter: pv.Plotter = None
 ) -> pv.Plotter:
     """TODO write documentation"""
-    pass
+    if plotter is None:
+        plotter = pv.Plotter()
+
+    grid = pv.ImageData()
+    grid.dimensions = np.array(ct.shape) + 1
+    grid.cell_data['values'] = ct.flatten(order='F')
+    plotter.add_volume(grid, cmap="gray", opacity=[0,0.045/5])
+
+    return plotter
