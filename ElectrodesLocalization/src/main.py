@@ -1,12 +1,14 @@
+# Local modules
+from utils import NibCTWrapper, log
 import contacts_isolation
 import segmentation
+import postprocessing
 import plot
-from utils import NibCTWrapper, log
-import utils
+
+# External modules
 import os
-from numpy import savetxt, loadtxt
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def main():
@@ -38,9 +40,9 @@ def main():
         if not os.path.exists(contacts_path):
             contacts = contacts_isolation.get_contacts(ct_object)
             # TODO CODING REMOVE: caching the contacts
-            savetxt(contacts_path, contacts)
+            np.savetxt(contacts_path, contacts)
         else:
-            contacts = loadtxt(contacts_path)
+            contacts = np.loadtxt(contacts_path)
     else:
         contacts = contacts_isolation.get_contacts(None, synthetic=True)
 
@@ -53,7 +55,7 @@ def main():
 
     # Assigning an id to all contacts of each electrode, based on depth
     ct_center_physical = ct_object.apply_affine(np.array(ct_shape)/2, 'forward')
-    contacts_ids = utils.get_electrodes_contacts_ids(
+    contacts_ids = postprocessing.get_electrodes_contacts_ids(
             contacts, labels, ct_center_physical)
 
     # Converting contacts back to voxel coordinates
