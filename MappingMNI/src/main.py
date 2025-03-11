@@ -4,9 +4,8 @@ from dipy.align.imaffine import AffineMap
 from dipy.align.imwarp import DiffeomorphicMap
 import nibabel as nib
 
-# TODO remove
+# TODO remove in final version
 import hardcoded_data
-import threading
 
 
 # Inputs
@@ -14,7 +13,7 @@ ct2anat_path  = "D:\\QTFE_local\\Python\\Coregistration\\sub11\\out\\Mapping_CT_
 anat2mni_path = "D:\\QTFE_local\\Python\\Coregistration\\sub11\\out\\Mapping_T1w_to_MNI.p"
 mni_path      = "D:\\QTFE_local\\Python\\data\\MNI.nii.gz"
 
-# TODO remove
+# TODO remove in final version
 ct_path ="D:\\QTFE_local\\Python\\Coregistration\\sub11\\in\\CT.nii.gz"
 
 
@@ -40,12 +39,12 @@ if __name__ == '__main__':
     
     # Plotting CT
     ct = nib.load(ct_path).get_fdata()
-    plotter = utils.plot_contacts(contacts_ct)
-    utils.plot_volume(ct, plotter)
+    plotter = utils.plot_volume(ct)
+    utils.plot_contacts(contacts_ct, plotter)
     plotter.show()
 
     # Plotting MNI
     mni = nib.load(mni_path).get_fdata()
-    plotter = utils.plot_contacts(contacts_mni)
-    utils.plot_volume(mni, plotter)
+    plotter = utils.plot_volume(mni)
+    utils.plot_contacts(contacts_mni, plotter)
     plotter.show()   

@@ -39,13 +39,13 @@ def binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
     of the ultimare erosion algorithm is the union of all those connected
     components.
     
-    Inputs:
+    ### Inputs:
     - image: an array of dtype 'bool' of arbitrary dimensions and shape.
     - struct: a binary array with number of dimensions identical to 'image' that
     represents the structuring element used in the erosion and reconstruction
     parts of the binary erosion algorithm.
     
-    Output:
+    ### Output:
     - result: a binary array with the same shape and dtype identical as 'image'
     which contains the result of the ultimate erosion applied on 'image' with
     'struct' as structuring element.
@@ -71,11 +71,11 @@ def opti_center_of_mass(input, labels, index):
     and only keep the smallest relevant box (i.e. the smallest box that contains
     all occurences of 'index') before feeding it to scipy.ndimage.center_of_mass.
     
-    - Inputs:
+    ### Inputs:
     The inputs are the same as those of scipy.ndimage.center_of_mass. Arrays
     'input' and 'labels' must both be of shape (L, M, N).
     
-    Output:
+    ### Output:
     coords: an array of shape (3,) that contains the same coordinates as 
     returned by scipy.ndimage.center_of_mass, but computed faster."""
     # Computing the lower and upper bound of the coordinates of the useful box
@@ -110,7 +110,7 @@ def compute_contacts_centers(
     ultimate erosion algorithm. Then, the center of mass of each connected
     component (weighted by the values in 'ct_grayscale') are computed.
     
-    Input:
+    ### Inputs:
     - ct_grayscale: an array of shape (L, M, N) that contains the full 
     grayscale CT scan.
     - ct_mask: a binary array of shape identical to 'ct_grayscale' that 
@@ -118,7 +118,7 @@ def compute_contacts_centers(
     - struct: a binary array of dtype 'bool' and of shape (I, J, K) that 
     contains the structuring element used by the ultimate erosion algorithm.
     
-    Output:
+    ### Output:
     - contacts_com: an array of shape (NC,3) that contains the 3D coordinates of
     all NC contacts identified."""
     log("Computing ultimate erosion", erase=True)
@@ -137,12 +137,12 @@ def get_contacts(
         ct_object: NibCTWrapper=None, 
         synthetic: bool=False
     ) -> np.ndarray:
-    """Returns a set of 3D coordinates of electrode contacts encountered in a 
+    """Returns a set of 3D coordinates of electrode contacts detected in a 
     CT scan. This function acts as a gateaway because it can either compute
     actual contacts centers of mass from a CT scan, or return a constant
     set of synthetic coordinates pre-defined by hand.
     
-    Inputs:
+    ### Inputs:
     - ct_object: the CT scan from which to compute contacts centers. Ignored if
     'synthetic' is set to True. Otherwise:
         - Its attribute 'ct' must be an array of shape (L, M, N) that contains 
@@ -151,7 +151,11 @@ def get_contacts(
         'ct_grayscale' that contains a mask of the electrode contacts in the 
         CT scan.
     - synthetic: whether to actually compute contacts coordinates from a CT 
-    (False) or quickly return a set of synthetic and constant coordinates (True)."""
+    (False) or quickly return a set of synthetic and constant coordinates (True).
+    
+    ### Returns:
+    - contacts: an array of shape (N, 3) that contains the 3D coordinates
+    of all N electrode contacts detected."""
     if synthetic:
         rng = np.random.default_rng(seed=42)
         all_contacts = np.concatenate(hardcoded_data.SUB11_ELECTRODES_GT)

@@ -2,17 +2,18 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 import numpy as np
 from numpy.linalg import norm
-from utils import Electrode, log
-from typing import List
+from utils import log
+from typing import List, Tuple
 from sklearn.linear_model import LinearRegression
 
 def __flip_positive_x(a: np.ndarray) -> np.ndarray:
     """In a list of vectors, flips each vector if necessary, so that its
     x-component is positive.
     
-    Input:
+    ### Input:
     - a: an array of shape (M, N) that contains M vectors of N components each.
     
+    ### Output
     - output: an array of shape (M, N) where each vector a[i] has been flipped
     (or not) such that output[i, 0] is positive. All vectors a[i] and a[j] are
     treated indepedently from each other."""
@@ -21,11 +22,11 @@ def __flip_positive_x(a: np.ndarray) -> np.ndarray:
 def __get_vector_K_nearest(contacts: np.ndarray, k:int) -> List[np.ndarray]:
     """Returns the vector between each contact and its K closest neighbors.
 
-    Input:
+    ### Inputs:
     - contacts: an array of shape (N, 3) that contains the coordinates of the input
     - k: the number of neighbors to include
 
-    Output:
+    ### Outputs:
     - neighbors: an array of shape (K, N, 3) that contains the absolute
     coordinates of the K closest neighbors.
     - vectors: an array of shape (K, N, 3) that contains the vectors between
@@ -85,11 +86,11 @@ def __get_direction_neighbors(contacts: np.ndarray, k:int) -> np.ndarray:
 def __feature_vector_closest(contacts: np.ndarray) -> np.ndarray:
     """Returns the vector that leads each contact to its closest contact.
 
-    Input:
+    ### Input:
     - contacts: an array of shape (N, 3) that contains the coordinates of the N
     contacts.
 
-    Output:
+    ### Output:
     - vector_posx: the array of shape (N, 3) that contains, for each contact, 
     the vector to its closest contact. Each vector is potentially flipped as
     to have a positive x-component."""
@@ -156,7 +157,11 @@ def __feature_proj_plane(contacts, xval=0, k=2):
     return proj[:,1:]
 
 
-def __feature_proj_plane_new(contacts, xval=0, k=3):
+def __feature_proj_plane_new(
+        contacts: np.ndarray, 
+        xval: float=0, 
+        k:int=3
+) -> np.ndarray:
     """This function returns features for the given list of contacts
     coordinates. For each contact:
     - its k nearest neighbors within 'contacts' are fetched;
@@ -166,11 +171,15 @@ def __feature_proj_plane_new(contacts, xval=0, k=3):
     plane x = xval. These coordinates (y_p, z_p) are the features returned for
     the contact.
 
-    Input:
+    ### Inputs:
     - contacts: an array of shape (N, 3) that contains the coordinates of the N
     contacts.
+    - xval: the position of the plane onto which to project the linear 
+    regressions. Mentioned plane follows the equation x = xval.
+    - k: the number of neighbors to retrieve for each contact to compute a
+    linear regression.
 
-    Output:
+    ### Output:
     - intersections: an array of shape (N, 2) such that 'intersections[i]'
     contains the features of 'contacts[i]', which are computed as stated above.
     """
@@ -201,13 +210,13 @@ def __extract_features(
     """From the coordinates of the contacts, extracts and returns the demanded 
     features used in the clustering technique.
 
-    Input:
+    ### Inputs:
     - contacts: an array of shape (N, 3) that contains the coordinates of the N
     contacts to cluster.
     - feat_list: a list of the features to include in the output. The list of
     available feature names is given below.
 
-    Output:
+    ### Output:
     - features: an array of shape (N, M) that contains the M features for each of
     the N contacts.
     
@@ -251,10 +260,10 @@ def segment_electrodes(
         contacts: np.ndarray,
         n_electrodes: int, 
         ct_shape: tuple
-) -> List[Electrode]:
+) -> np.ndarray:
     """Groups contacts into electrodes.
     
-    Inputs:
+    ### Inputs:
     - contacts: an array of shape (N, 3) that contains the coordinates of the
     N contacts to group into electrodes.
     - n_electrodes: the number of electrodes to group the contacts.
@@ -262,9 +271,9 @@ def segment_electrodes(
     determine the direction of the electrode (which end is the deepest, and
     which end is at the entry of the skull).
     
-    Outputs:
-    electrodes: a list of electrodes computed from the given contacts. The list
-    is of length n_electrodes."""
+    ### Output:
+    - labels: an array of shape (N,) that contains the label in 
+    {0, ..., n_electrodes-1} of each contact"""
     # Feature extraction
     feat_list = [
         #"coords", 
@@ -282,32 +291,35 @@ def segment_electrodes(
     #kmeans = KMeans(n_clusters=2*n_electrodes)
     #labels = kmeans.fit_predict(features)
 
+    # TODO: back to 2*n_electrodes
     gauss_mixt = GaussianMixture(
-        n_components=2*n_electrodes,
+        n_components=n_electrodes,
         covariance_type='full',
         n_init=5,
-        init_params='k-means++'
+        init_params='k-means++',
+        random_state=42
     )
-    labels = gauss_mixt.fit_predict(features)
+    labels = gauss_mixt.fit_predict(features)    # Shape (N,)
 
-    labels = postprocess(contacts, labels, n_electrodes)
+    # Post-processing labels to correct errors and handle specific cases
+    # electrodes intersections, curved electrodes, ...
+    # TODO uncomment
+    #labels = postprocess(contacts, labels, n_electrodes)
 
     # Constructing the electrodes one by one
-    electrodes = []
-    for e in np.unique(labels):
-        relevant_contacts = contacts[labels == e]
-        electrodes.append(Electrode(relevant_contacts, ct_shape))
 
-    return electrodes
+    return labels
 
 
 
 ### POST PROCESSING
 
 def postprocess(contacts, labels, n_electrodes):
+    # TODO
     log("Postprocessing electrodes")
     labels = labels.copy()
-    # TODO
+
+    # TODO debug so that labels end up in range [0, n_electrodes)
     uniques = np.unique(labels)
     while len(uniques) > n_electrodes:
         # Regress electrode-wise
@@ -333,7 +345,6 @@ def postprocess(contacts, labels, n_electrodes):
         proj_min = inters + contacts[1,:].min() * dirs
         proj_max = inters + contacts[1,:].max() * dirs
         projs = np.concatenate([proj_min, proj_max], axis=1)    # Shape (K, 4)
-
 
         # Distance map
         diff = projs[:, np.newaxis, :] - projs[np.newaxis, :, :]
