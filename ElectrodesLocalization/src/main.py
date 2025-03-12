@@ -1,5 +1,5 @@
 # Local modules
-from utils import NibCTWrapper, log
+from utils import NibCTWrapper, OutputCSV, log
 import contacts_isolation
 import segmentation
 import postprocessing
@@ -8,80 +8,75 @@ import plot
 # External modules
 import os
 import numpy as np
-import pandas as pd
-
 
 def main():
-    # TODO replace: hyperparameters
-    DEBUG_USE_SYNTH = True
+    # TODO Remove: synthetic data
+    DEBUG_USE_SYNTH = False
+    path_suffix = ("sub11" if not DEBUG_USE_SYNTH else "synthetic01")
+
+    # TODO replace hyperparameters
     ELECTRODE_THRESHOLD = 2500
-    n_electrodes = 8
-    ct_shape = (512,512,256)
+    N_ELECTRODES = 8
 
     # Inputs
-    input_dir         = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\sub11\\in"
-    ct_path           = os.path.join(input_dir, "CT.nii.gz")
-    ct_brainmask_path = os.path.join(input_dir, "CTMask.nii.gz")
-    contacts_path     = os.path.join(input_dir, "contacts.txt")
-    output_dir        = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\sub11\\out"
-    output_csv_path   = os.path.join(output_dir, "electrodes.csv")
+    data_dir          = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\"\
+                        f"data\\{path_suffix}"
+    ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
+    ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
+    contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
+    output_path       = os.path.join(data_dir, "out\\electrodes.csv")
 
     # Loading the data
     log("Loading data")
     ct_object = NibCTWrapper(ct_path, ct_brainmask_path)
 
+    # Preparing the object to store and save the output
+    output_csv = OutputCSV(output_path, raw_contacts_path=contacts_path)
+
     # Preprocessing
     log ("Preprocessing data")
     ct_object.mask &= (ct_object.ct > ELECTRODE_THRESHOLD)
-        
+    
     # Fetching approximate contacts
     log("Extracting contacts coordinates")
-    if not DEBUG_USE_SYNTH:
-        if not os.path.exists(contacts_path):
-            contacts = contacts_isolation.get_contacts(ct_object)
-            # TODO CODING REMOVE: caching the contacts
-            np.savetxt(contacts_path, contacts)
-        else:
-            contacts = np.loadtxt(contacts_path)
+    if output_csv.are_raw_contacts_available():
+        contacts = output_csv.load_raw_contacts()
     else:
-        contacts = contacts_isolation.get_contacts(None, synthetic=True)
-
+        contacts = contacts_isolation.compute_contacts_centers(
+                ct_grayscale=ct_object.ct, 
+                ct_mask=ct_object.mask, 
+                struct=contacts_isolation.__get_structuring_element('cross')
+        )
+        # Caching the 
+        output_csv.save_raw_contacts(contacts)
+    
     # Converting contacts to physical coordinates
     contacts = ct_object.apply_affine(contacts, 'forward')
 
     # Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels = segmentation.segment_electrodes(contacts, n_electrodes, ct_shape)
+    labels = segmentation.segment_electrodes(contacts, N_ELECTRODES)
 
     # Assigning an id to all contacts of each electrode, based on depth
-    ct_center_physical = ct_object.apply_affine(np.array(ct_shape)/2, 'forward')
-    contacts_ids = postprocessing.get_electrodes_contacts_ids(
-            contacts, labels, ct_center_physical)
+    ct_center_physical = ct_object.apply_affine(
+        coords=np.array(ct_object.ct.shape)/2, 
+        mode='forward')
+    contacts, labels, contacts_ids = postprocessing.postprocess(
+        contacts, labels, ct_center_physical)
 
     # Converting contacts back to voxel coordinates
     contacts = ct_object.apply_affine(contacts, 'inverse')
 
     # Plotting results
     log("Plotting results")
-    pv_plotter = None
-    if not DEBUG_USE_SYNTH:
-        pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
-        plot.plot_ct(ct_object.ct, pv_plotter)
-    pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
+    pv_plotter = plot.plot_binary_electrodes(ct_object.mask)
+    plot.plot_ct(ct_object.ct, pv_plotter)
+    plot.plot_colored_electrodes(contacts, labels, pv_plotter)
     pv_plotter.show()
 
     # Saving results to CSV file
-    df_content = {
-        'CT voxel x': contacts[:,0],
-        'CT voxel y': contacts[:,1],
-        'CT voxel z': contacts[:,2],
-        'Electrode id': labels,
-        'Contact id': contacts_ids
-    }
-    df = pd.DataFrame(df_content)
-    df.sort_values(by=['Electrode id', 'Contact id'], 
-                   axis='index', inplace=True)
-    df.to_csv(output_csv_path, index=False)
+    log("Saving results to CSV file")
+    output_csv.save_output(contacts, labels, contacts_ids)
 
 if __name__ == '__main__':
     main()

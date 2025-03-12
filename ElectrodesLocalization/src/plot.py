@@ -5,7 +5,6 @@ This file is responsible for plotting the data
 import pyvista as pv
 import random as random
 import numpy as np
-from typing import List
 
 __COLOR_PALETTE = [
     (0, 0, 0),         # black
@@ -52,8 +51,9 @@ def plot_colored_electrodes(
             color = [random.randint(0,255) for _ in range(3)]        
 
         point_cloud = pv.PolyData(contacts[labels == e_id])
-        plotter.add_points(point_cloud, color=color, point_size=15.0, 
-                        render_points_as_spheres=True)
+        plotter.add_points(
+            point_cloud, color=color, point_size=8.0, 
+            render_points_as_spheres=True)
     
     # Centers the camera around the center of electrodes
     mean = contacts.mean(axis=0)
@@ -67,8 +67,14 @@ def plot_binary_electrodes(
         plotter: pv.Plotter = None
 ) -> pv.Plotter:
     """TODO write documentation"""
+
     if plotter is None:
         plotter = pv.Plotter()
+
+    # TODO Remove: synthetic data
+    if ct_mask.max() <= 0:
+        return plotter
+
 
     mesh_ct = pv.wrap(ct_mask)
     mesh_ct.cell_data['intensity'] = ct_mask[:-1, :-1, :-1].flatten(order='F')
@@ -82,8 +88,13 @@ def plot_ct(
         plotter: pv.Plotter = None
 ) -> pv.Plotter:
     """TODO write documentation"""
+
     if plotter is None:
         plotter = pv.Plotter()
+
+    # TODO Remove: synthetic data
+    if ct.max() <= 0:
+        return plotter
 
     grid = pv.ImageData()
     grid.dimensions = np.array(ct.shape) + 1

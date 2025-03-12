@@ -1,11 +1,10 @@
-import hardcoded_data
 import numpy as np
 from scipy.ndimage import (binary_erosion, binary_propagation,
                            label, center_of_mass)
-from utils import NibCTWrapper, log
+from utils import log
 
 
-def get_structuring_element(type='cross'):
+def __get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
     elif type == 'cross':
@@ -27,11 +26,11 @@ def get_structuring_element(type='cross'):
             ]
         ])
     else:
-        raise ValueError(f"Structuring element type must be 'cube' or 'cross'. \
-                         Got: {type}")
+        raise ValueError(
+            f"Structuring element type must be 'cube' or 'cross'. Got: {type}")
     
 
-def binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
+def __binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
     """Performs ultimate erosion on an N-dimensional binary image.
     Ultimate erosion is a technique that performs successive erosions on all
     objects of an image until they are reduced to atomic connected components, 
@@ -41,9 +40,9 @@ def binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
     
     ### Inputs:
     - image: an array of dtype 'bool' of arbitrary dimensions and shape.
-    - struct: a binary array with number of dimensions identical to 'image' that
-    represents the structuring element used in the erosion and reconstruction
-    parts of the binary erosion algorithm.
+    - struct: a binary array with number of dimensions identical to 'image' 
+    that represents the structuring element used in the erosion and 
+    reconstruction parts of the binary erosion algorithm.
     
     ### Output:
     - result: a binary array with the same shape and dtype identical as 'image'
@@ -58,18 +57,19 @@ def binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
         reconstructed = binary_propagation(eroded, struct, image)
 
         # The xor is equivalent to substracting 'reconstructed' from 'image' 
-        # if they only consist of 0's and 1's, knowing that reconstructed < image
+        # if they only consist of 0 and 1's, knowing that reconstructed < image
         result |= np.logical_xor(image, reconstructed)
         image = eroded
 
     return result
 
 
-def opti_center_of_mass(input, labels, index):
+def __opti_center_of_mass(input, labels, index):
     """This function is an optimized wrapper of the function 
     'scipy.ndimage.center_of_mass' that restricts the size of the input array
-    and only keep the smallest relevant box (i.e. the smallest box that contains
-    all occurences of 'index') before feeding it to scipy.ndimage.center_of_mass.
+    and only keep the smallest relevant box (i.e. the smallest box that 
+    contains all occurences of 'index') before feeding it to 
+    scipy.ndimage.center_of_mass.
     
     ### Inputs:
     The inputs are the same as those of scipy.ndimage.center_of_mass. Arrays
@@ -119,50 +119,15 @@ def compute_contacts_centers(
     contains the structuring element used by the ultimate erosion algorithm.
     
     ### Output:
-    - contacts_com: an array of shape (NC,3) that contains the 3D coordinates of
-    all NC contacts identified."""
+    - contacts_com: an array of shape (NC,3) that contains the 3D coordinates 
+    of all NC contacts identified."""
     log("Computing ultimate erosion", erase=True)
-    ult_er = binary_ultimate_erosion(ct_mask, struct)
+    ult_er = __binary_ultimate_erosion(ct_mask, struct)
     labels, n_contacts = label(ult_er)
     
     contacts_com = []
     for i in range(1, n_contacts+1):
         log(f"Contact {i}/{n_contacts}", erase=True)
-        contacts_com.append(opti_center_of_mass(ct_grayscale, labels, i))
+        contacts_com.append(__opti_center_of_mass(ct_grayscale, labels, i))
 
     return np.stack(contacts_com, dtype=np.float32)
-
-
-def get_contacts(
-        ct_object: NibCTWrapper=None, 
-        synthetic: bool=False
-    ) -> np.ndarray:
-    """Returns a set of 3D coordinates of electrode contacts detected in a 
-    CT scan. This function acts as a gateaway because it can either compute
-    actual contacts centers of mass from a CT scan, or return a constant
-    set of synthetic coordinates pre-defined by hand.
-    
-    ### Inputs:
-    - ct_object: the CT scan from which to compute contacts centers. Ignored if
-    'synthetic' is set to True. Otherwise:
-        - Its attribute 'ct' must be an array of shape (L, M, N) that contains 
-        the full grayscale CT scan. 
-        - Its attribute 'mask' must be a binary array of shape identical to 
-        'ct_grayscale' that contains a mask of the electrode contacts in the 
-        CT scan.
-    - synthetic: whether to actually compute contacts coordinates from a CT 
-    (False) or quickly return a set of synthetic and constant coordinates (True).
-    
-    ### Returns:
-    - contacts: an array of shape (N, 3) that contains the 3D coordinates
-    of all N electrode contacts detected."""
-    if synthetic:
-        rng = np.random.default_rng(seed=42)
-        all_contacts = np.concatenate(hardcoded_data.SUB11_ELECTRODES_GT)
-        return rng.permutation(all_contacts)
-
-    assert ct_object is not None, "If 'synthetic' is set to False, then \
-        arg 'ct_object' must not be None."
-    
-    struct = get_structuring_element('cross')
-    return compute_contacts_centers(ct_object.ct, ct_object.mask, struct)

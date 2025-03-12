@@ -1,9 +1,9 @@
 import numpy as np
-from numpy.linalg import norm
-from sklearn.decomposition import PCA
 import nibabel as nib
 from datetime import datetime
 from typing import Literal
+import pandas as pd
+import os
 
 
 def log(msg: str, erase: bool=False) -> None:
@@ -21,104 +21,13 @@ def log(msg: str, erase: bool=False) -> None:
     print(f"{timestamp}{start} {msg}", end=end)
 
 
-def sort_indices_by_contact_depth(
-        indices: np.ndarray, 
-        contacts: np.ndarray, 
-        center: np.ndarray
-) -> np.ndarray:
-    """Sorts the contacts indices of a single electrode by depth. 
-    
-    ### Inputs:
-    - indices: an integer array of shape (K,) that contains the indices of
-    the coordinates in 'contacts' to consider and sort. K must belong to 
-    {0, ..., N-1} (N is defined in the description of 'contacts').
-    - contacts: an array of shape (N, 3) that contains the 3D coordinates of
-    all the contacts detected in the CT.
-    - center: an array of shape (3,) that contains the coordinates of the 
-    center of the CT, in the same coordinate system as that of 'contacts'.
-    Is is used to determine which end of each electrode is the deepest.
-    
-    ### Returns:
-    - sorted_indices: an array of shape (K,) that contains the same values as
-    in indices, but sorted such that sorted_indices[0] refers to the deepest
-    contact of the electrode, and sorted_indices[-1] refers to the contact that
-    is closest to the electrode's entry point."""
-
-    # Corner case: don't and can't compute PCA if only one contact in electrode
-    # -> it's already sorted
-    if indices.shape[0] <= 1:
-        return indices
-
-    # Sorting the relevant contacts by their value 
-    # on the main axis of the electrode
-    pca = PCA(n_components=1)
-    # ravel below to convert (N,1) to (N,)
-    scores = pca.fit_transform(contacts[indices]).ravel()   
-    sorted_indices = indices[np.argsort(scores)]
-
-    # If necessary, reversing the order of the contacts of the electrode so 
-    # that the first contact of the array is the deeper of the two
-    # (i.e. the closer to the center of the ct)
-    first_contact = contacts[sorted_indices[0]]
-    last_contact = contacts[sorted_indices[-1]]
-    if norm(first_contact-center) > norm(last_contact-center):
-        # First contact is deeper than last => reverse the electrode
-        sorted_indices = np.flip(sorted_indices)
-
-    return sorted_indices
-
-
-def get_electrodes_contacts_ids(
-        contacts: np.ndarray, 
-        labels: np.ndarray,
-        center: np.ndarray
-) -> np.ndarray:
-    """Returns the id of each contact along its associated electrode. 
-    
-    For example, suppose the electrode #2 contains 4 contacts located at 
-    indices 19, 21, 56, 75 in the matrix 'contacts'. Also suppose that the 
-    order of these contacts along the electrode, from deepest to closest to 
-    entry point, is 56, 75, 19, 21 (contact 56 is the deepest of electrode #2, 
-    and contact 21 is the entry point of electrode #2). Then, the output 
-    'contacts_ids' will be such that contacts_ids[56] = 0, 
-    contacts_ids[75] = 1, contacts_ids[19] = 2, and contacts_ids[21] = 3.
-    This process is done for each electrode present in 'labels'.
-    
-    ### Inputs:
-    - contacts: an array of shape (N, 3) that contains the 3D coordinates of
-    all the contacts detected in the CT.
-    - labels: an integer array of shape (N,) that contains, for each contact,
-    the id of the electrode it has been classified into.
-    - center: an array of shape (3,) that contains the coordinates of the 
-    center of the CT, in the same coordinate system as that of 'contacts'.
-    Is is used to determine which end of each electrode is the deepest.
-    
-    ### Output:
-    - contacts_ids: an array of shape (N,) that contains, for each contact,
-    the position it occupies on its electrode. The position is encoded as an
-    integer in range [0, nb_contacts-1]."""
-    contacts_ids = - np.ones_like(labels)    # default id = -1
-    for e_id in np.unique(labels):
-        # index [0] below because nonzero returns a tuple of length 1
-        elec_indices = np.nonzero(labels == e_id)[0]
-        sorted_indices = sort_indices_by_contact_depth(
-            elec_indices, contacts, center)
-        nb_contacts = np.shape(elec_indices)[0]
-        contacts_ids[sorted_indices] = np.arange(nb_contacts)
-
-    # TODO debug remove
-    assert not np.any(contacts_ids == -1) 
-
-    return contacts_ids
-
-
 class NibCTWrapper:
     def __init__(self, ct_path: str, ct_brainmask_path: str):
         # Thresholding and skull-stripping CT
-        nib_ct          = nib.load(ct_path)
+        nib_ct = nib.load(ct_path)
 
         # The arrays of the CT and brain mask
-        self.ct         = nib_ct.get_fdata()
+        self.ct   = nib_ct.get_fdata()
         self.mask = nib.load(ct_brainmask_path).get_fdata().astype(bool)
 
         # Considering that voxels may not be square but rectangular
@@ -147,9 +56,10 @@ class NibCTWrapper:
             # Corods of shape (N, 3)
             # Adding 1's to get homogeneous coordinates
             ones = np.ones((coords.shape[0], 1), dtype=np.float32)
-            hmg_coords = np.concatenate([coords, ones], axis=1).T    # Shape (4, N)  
+            # Shape (4, N)  
+            hmg_coords = np.concatenate([coords, ones], axis=1).T
             # Getting rid of the homogeneous 1's + reshaping to (N, 3)
-            return (A @ hmg_coords)[:3,:].T    # 
+            return (A @ hmg_coords)[:3,:].T
         else:
             # Coords of shape (3,)
             ones = np.ones((coords.shape[0], 1), dtype=np.float32)
@@ -158,4 +68,71 @@ class NibCTWrapper:
             return (A @ hmg_coords)[:3].reshape((3,))
 
 
+
+class OutputCSV:
+    def __init__(self, output_path: str, raw_contacts_path: str=None, ):
+        """TODO write documentation"""
+        # TODO
+        self.raw_contacts_path = raw_contacts_path
+        self.output_path   = output_path
+
+    def are_raw_contacts_available(self) -> bool:
+        """TODO write documentation"""
+        if (self.raw_contacts_path is None 
+                or not os.path.exists(self.raw_contacts_path)):
+            return False
+        df = pd.read_csv(self.raw_contacts_path)
+        # TODO concatenate
+        a = ('ct_vox_x' in df) 
+        b = ('ct_vox_y' in df)
+        c = ('ct_vox_z' in df)
+        z = a and b and c
+        return z
+
+    def load_raw_contacts(self) -> np.ndarray:
+        """TODO write documentation"""
+        df = pd.read_csv(self.raw_contacts_path)
+        contacts_df = df[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']]
+        return contacts_df.to_numpy(dtype=np.float32)
+
+    def save_raw_contacts(self, contacts: np.ndarray) -> pd.DataFrame:
+        """TODO write documentation"""
+        df_content = {
+            'ct_vox_x': contacts[:,0],
+            'ct_vox_y': contacts[:,1],
+            'ct_vox_z': contacts[:,2],
+        }
+        df = pd.DataFrame(df_content)
+        # TODO fix bug float_format round not applied
+        df.to_csv(
+            self.raw_contacts_path, 
+            index=False,
+            float_format=lambda f: round(f, 3))    
+        return df
+
+    def save_output(
+            self, 
+            contacts: np.ndarray=None,
+            electrode_ids: np.ndarray=None, 
+            position_ids: np.ndarray=None
+    ) -> pd.DataFrame:
+        """TODO write documentation
         
+        update content and write to file"""
+        df_content = {
+            'ct_vox_x': contacts[:,0],
+            'ct_vox_y': contacts[:,1],
+            'ct_vox_z': contacts[:,2],
+            'e_id': electrode_ids,
+            'c_id': position_ids,
+        }
+        df = pd.DataFrame(df_content)
+        df.sort_values(
+            by=['e_id', 'c_id'], 
+            axis='index', inplace=True)
+        # TODO fix bug float_format round not applied
+        df.to_csv(
+            self.output_path, 
+            index=False,
+            float_format=lambda f: round(f, 3))
+        return df

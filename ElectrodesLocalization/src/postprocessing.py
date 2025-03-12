@@ -1,12 +1,13 @@
 import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
+from typing import Tuple
 
 
 def __sort_indices_by_contact_depth(
         indices: np.ndarray, 
         contacts: np.ndarray, 
-        center: np.ndarray
+        ct_center: np.ndarray
 ) -> np.ndarray:
     """Sorts the contacts indices of a single electrode by depth. 
     
@@ -16,7 +17,7 @@ def __sort_indices_by_contact_depth(
     {0, ..., N-1} (N is defined in the description of 'contacts').
     - contacts: an array of shape (N, 3) that contains the 3D coordinates of
     all the contacts detected in the CT.
-    - center: an array of shape (3,) that contains the coordinates of the 
+    - ct_center: an array of shape (3,) that contains the coordinates of the 
     center of the CT, in the same coordinate system as that of 'contacts'.
     Is is used to determine which end of each electrode is the deepest.
     
@@ -43,7 +44,7 @@ def __sort_indices_by_contact_depth(
     # (i.e. the closer to the center of the ct)
     first_contact = contacts[sorted_indices[0]]
     last_contact = contacts[sorted_indices[-1]]
-    if norm(first_contact-center) > norm(last_contact-center):
+    if norm(first_contact-ct_center) > norm(last_contact-ct_center):
         # First contact is deeper than last => reverse the electrode
         sorted_indices = np.flip(sorted_indices)
 
@@ -53,7 +54,7 @@ def __sort_indices_by_contact_depth(
 def get_electrodes_contacts_ids(
         contacts: np.ndarray, 
         labels: np.ndarray,
-        center: np.ndarray
+        ct_center: np.ndarray
 ) -> np.ndarray:
     """Returns the id of each contact along its associated electrode. 
     
@@ -71,7 +72,7 @@ def get_electrodes_contacts_ids(
     all the contacts detected in the CT.
     - labels: an integer array of shape (N,) that contains, for each contact,
     the id of the electrode it has been classified into.
-    - center: an array of shape (3,) that contains the coordinates of the 
+    - ct_center: an array of shape (3,) that contains the coordinates of the 
     center of the CT, in the same coordinate system as that of 'contacts'.
     Is is used to determine which end of each electrode is the deepest.
     
@@ -84,7 +85,7 @@ def get_electrodes_contacts_ids(
         # index [0] below because nonzero returns a tuple of length 1
         elec_indices = np.nonzero(labels == e_id)[0]
         sorted_indices = __sort_indices_by_contact_depth(
-            elec_indices, contacts, center)
+            elec_indices, contacts, ct_center)
         nb_contacts = np.shape(elec_indices)[0]
         contacts_ids[sorted_indices] = np.arange(nb_contacts)
 
@@ -92,3 +93,20 @@ def get_electrodes_contacts_ids(
     assert not np.any(contacts_ids == -1) 
 
     return contacts_ids
+
+
+def postprocess(
+        contacts: np.ndarray, 
+        labels: np.ndarray,
+        ct_center: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """TODO write documentation"""
+
+    # TODO write
+
+    # ...
+
+    # Computing the positional id of each contact along its electrode
+    positions_ids = get_electrodes_contacts_ids(contacts, labels, ct_center)
+
+    return contacts, labels, positions_ids
