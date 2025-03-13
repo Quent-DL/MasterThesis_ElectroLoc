@@ -5,6 +5,7 @@ This file is responsible for plotting the data
 import pyvista as pv
 import random as random
 import numpy as np
+import matplotlib.pyplot as plt
 
 __COLOR_PALETTE = [
     (0, 0, 0),         # black
@@ -52,7 +53,7 @@ def plot_colored_electrodes(
 
         point_cloud = pv.PolyData(contacts[labels == e_id])
         plotter.add_points(
-            point_cloud, color=color, point_size=8.0, 
+            point_cloud, color=color, point_size=11.0, 
             render_points_as_spheres=True)
     
     # Centers the camera around the center of electrodes
@@ -75,13 +76,13 @@ def plot_binary_electrodes(
     if ct_mask.max() <= 0:
         return plotter
 
-
     mesh_ct = pv.wrap(ct_mask)
     mesh_ct.cell_data['intensity'] = ct_mask[:-1, :-1, :-1].flatten(order='F')
     vol = mesh_ct.threshold(value=1, scalars='intensity')
     plotter.add_mesh(vol, cmap='Blues', scalars='intensity', opacity=0.075)
 
     return plotter
+
 
 def plot_ct(
         ct: np.ndarray,

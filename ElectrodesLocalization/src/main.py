@@ -16,11 +16,11 @@ def main():
 
     # TODO replace hyperparameters
     ELECTRODE_THRESHOLD = 2500
-    N_ELECTRODES = 8
+    N_ELECTRODES = (8 if not DEBUG_USE_SYNTH else 5)
 
     # Inputs
     data_dir          = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\"\
-                        f"data\\{path_suffix}"
+        f"data\\{path_suffix}"
     ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
     ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
     contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
@@ -72,6 +72,8 @@ def main():
     pv_plotter = plot.plot_binary_electrodes(ct_object.mask)
     plot.plot_ct(ct_object.ct, pv_plotter)
     plot.plot_colored_electrodes(contacts, labels, pv_plotter)
+
+    pv_plotter.add_axes()
     pv_plotter.show()
 
     # Saving results to CSV file

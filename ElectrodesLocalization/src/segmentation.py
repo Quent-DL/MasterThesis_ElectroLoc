@@ -59,6 +59,23 @@ def __get_vector_K_nearest(contacts: np.ndarray, k:int) -> List[np.ndarray]:
     return neighbors, (np.stack(neighbors) - contacts[np.newaxis,:])
 
 
+def __get_dir_regression(contacts: np.ndarray, k: int) -> np.ndarray:
+    """TODO write documentation"""
+    neigh, _ = __get_vector_K_nearest(contacts, k)
+    data = np.concatenate([neigh, contacts[np.newaxis,:]])
+    intercepts = []
+    dirs = []
+    # Fitting one regression for each set of contact and neighbors
+    for i in range(contacts.shape[0]):
+        x = data[:,i,:1]
+        y = data[:,i,1:]
+        model = LinearRegression(fit_intercept=True)
+        model.fit(x, y)
+        intercepts.append(model.intercept_)
+        dirs.append(model.coef_.ravel())
+    return np.stack(intercepts), np.stack(dirs)
+
+
 def __get_direction_neighbors(contacts: np.ndarray, k:int) -> np.ndarray:
     """TODO write documentation
     
@@ -144,13 +161,6 @@ def __feature_proj_circle(contacts):
     return __proj_circle(sc, sr, lo, lu)
 
 
-def __feature_proj_plane(contacts, xval=0, k=2):
-    """TODO write documentation"""
-    vector = __get_direction_neighbors(contacts, k)
-    proj = contacts + (-(xval-contacts[:,:1])/vector[:,:1]) * vector
-    return proj[:,1:]
-
-
 def __feature_proj_plane_new(
         contacts: np.ndarray, 
         xval: float=0, 
@@ -177,23 +187,56 @@ def __feature_proj_plane_new(
     - intersections: an array of shape (N, 2) such that 'intersections[i]'
     contains the features of 'contacts[i]', which are computed as stated above.
     """
-    def __get_dir_regression():
-        neigh, _ = __get_vector_K_nearest(contacts, k)
-        data = np.concatenate([neigh, contacts[np.newaxis,:]])
-        intercepts = []
-        dirs = []
-        # Fitting one regression for each set of contact and neighbors
-        for i in range(contacts.shape[0]):
-            x = data[:,i,:1]
-            y = data[:,i,1:]
-            model = LinearRegression(fit_intercept=True)
-            model.fit(x, y)
-            intercepts.append(model.intercept_)
-            dirs.append(model.coef_.ravel())
-        return np.stack(intercepts), np.stack(dirs)
-
-    intercepts, coefs = __get_dir_regression()
+    intercepts, coefs = __get_dir_regression(contacts, k)
     return intercepts + xval * coefs
+
+
+def __feature_line_params(
+        contacts: np.ndarray, 
+        xval: float=0, 
+        k:int=3
+) -> np.ndarray:
+    """TODO write documentation"""
+    intercepts, coefs = __get_dir_regression(contacts, k)
+    return (intercepts + xval * coefs), coefs
+
+
+def __feature_proj_smart_plane(
+        contacts: np.ndarray, 
+        k:int=3
+) -> np.ndarray:
+    """TODO write documentation
+    
+    Ref: https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection"""
+    ### Lines parameters
+    # Intercepts and coefs of equations [y, z] = coefs[i] * x + intercepts[i]
+    # Both of shape (N, 2)
+    intercepts, coefs = __get_dir_regression(contacts, k)
+    # The points and directional vectors that define the lines.
+    # Such that Line[i] := {(x, y, z)[i] = p[i] + v[i]*t | t real} 
+    # - Points.Shape (N, 3). Format (0, p_y[i], p_z[i])
+    P = np.concatenate([np.zeros((intercepts.shape[0], 1)), intercepts], axis=1)
+    # - Directional vectors. Shape (N, 3). Format (1, v_y[i], v_z[i])
+    V = np.concatenate([np.ones((coefs.shape[0], 1)), coefs], axis=1)
+
+    ### Plane parameters
+    normalize = lambda u: u / np.linalg.norm(u)
+    # The origin of the plane. Shape (3,)
+    p0 = contacts.mean(axis=0)
+    # The normal of the plane. Shape (3,) and value [1, coef_y, coef_z]
+    n = np.array([1, *coefs.mean(axis=0)])
+    # The two unit vectors that define the plane. Shapes (3,)
+    v0 = normalize(np.array([-n[1], 1, 0]))
+    v1 = normalize(np.array([1, n[1], -(1+n[1]**2)/n[2]]))
+    
+    ### Projecting the 3D contacts into the 2D plane and retrieving coords.
+    denom = np.dot(V, np.cross(v0, v1))    # Shape (N,)
+    denom = denom.reshape((denom.shape[0], 1))    # Shape (N, 1)
+    a = - (P - p0) / denom    # Shape (N, 3)
+    u = np.sum(np.cross(v1, -V) * a, axis=1)   # Coordinate along v0 in plane. (N,) 
+    v = np.sum(np.cross(-V, v0) * a, axis=1)    # Coordinate along v1 in plane. (N,)
+
+    return np.stack([u, v], axis=1), coefs
 
 
 
@@ -232,19 +275,19 @@ def __extract_features(
     if "proj_closest_sphere" in feat_list:
         f = __feature_proj_circle(contacts)
         features.append(f)
-    if "proj_plane" in feat_list:
-        xval = contacts[:,0].min()
-        f1 = __feature_proj_plane(contacts, xval, k=3)
-        xval = contacts[:,0].max()
-        f2 = __feature_proj_plane(contacts, xval, k=3)
-        features.append(f1)
-        features.append(f2)
     if "proj_plane_new" in feat_list:
-        f1 = __feature_proj_plane_new(contacts, xval=contacts[:,0].min(), k=4)
-        f2 = __feature_proj_plane_new(contacts, xval=contacts[:,0].max(), k=4)
+        f1 = __feature_proj_plane_new(contacts, xval=contacts[:,0].min(), k=3)
+        f2 = __feature_proj_plane_new(contacts, xval=contacts[:,0].max(), k=3)
         features.append(f1)
         features.append(f2)
-
+    if "line_params" in feat_list:
+        f1, f2 = __feature_line_params(contacts, k=3)
+        features.append(f1)
+        features.append(f2)
+    if "smart_plane" in feat_list:
+        f1, f2 = __feature_proj_smart_plane(contacts, k=3)
+        features.append(f1)
+        features.append(f2)
 
     assert len(features) > 0, "At least one valid feature name must be given."
     return np.concatenate(features, axis=1)
@@ -269,19 +312,15 @@ def segment_electrodes(
         #"coords", 
         #"vect_closest",
         #"proj_closest_sphere",
-        #"proj_plane",
-        "proj_plane_new"
+        #"proj_plane_new",
+        #"line_params",
+        "smart_plane"
     ]
     features = __extract_features(contacts, feat_list)
 
-    # Applying KMeans to retrieve 'labels', an array of shape (N,) that
-    # contains the label of each contact (label is in range [0, n_electrodes))
-    # The label is the id of the electrode
-    
-    #kmeans = KMeans(n_clusters=2*n_electrodes)
-    #labels = kmeans.fit_predict(features)
-
-    # TODO: back to 2*n_electrodes
+    # Applying Gaussian Mixtures to retrieve 'labels', an array of shape (N,) 
+    # that contains the label of each contact (label is in range 
+    # [0, n_electrodes)). The label is the id of the electrode.
     gauss_mixt = GaussianMixture(
         n_components=n_electrodes,
         covariance_type='full',
