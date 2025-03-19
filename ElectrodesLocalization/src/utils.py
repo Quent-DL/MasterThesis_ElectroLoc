@@ -1,9 +1,10 @@
 import numpy as np
 import nibabel as nib
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Tuple
 import pandas as pd
 import os
+from sklearn.linear_model import LinearRegression
 
 
 def log(msg: str, erase: bool=False) -> None:
@@ -19,6 +20,51 @@ def log(msg: str, erase: bool=False) -> None:
     start = " --" if erase else ""
     timestamp = datetime.now().strftime("[%H:%M:%S]")
     print(f"{timestamp}{start} {msg}", end=end)
+
+
+def get_regression_line_parameters(
+        points: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+    """TODO write documentation
+    
+    ### Input:
+    - points: an array of shape (K, 3) that contains the 3D coordinates of
+    the points on which to perform the regression.
+    
+    ### Outputs:
+    - point: an array of shape (3,) that represents the point (0, p_y, p_z) by
+    which the regression line passes.
+    - direction: an array of shape (3,) that represents the direction vector
+    (1, v_y, v_z) of the regression line.
+
+    Assembling the two inputs, the line obtained by linear regression of 
+    'points' is the set of coordinates such that 
+    (x, y, z) = point + t*direction, for all real values t.
+    """
+
+    #neigh, _ = __get_vector_K_nearest(contacts, k)
+    #data = np.concatenate([neigh, contacts[np.newaxis,:]])
+    model = LinearRegression(fit_intercept=True)
+    model.fit(points[:,:1], points[:,1:])
+    return (
+        np.concatenate([[0], model.intercept_]),
+        np.concatenate([[1], model.coef_.ravel()])
+    )
+
+
+def distance_matrix(coords: np.ndarray) -> np.ndarray:
+    """Compute the distance matrix of an array of points.
+    
+    ### Input:
+    - coords: an array of shape (N, K) that contains N K-dimensional points.
+    
+    ### Output:
+    - distance_matrix: an array of shape (N, N) such that 
+    distance_matrix[i, j] contains the euclidian distance between coords[i]
+    and coords[j]. By definition, 'distance_matrix' is symmetric."""
+    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
+    return distance_matrix
 
 
 class NibCTWrapper:

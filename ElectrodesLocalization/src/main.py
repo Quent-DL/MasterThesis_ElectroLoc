@@ -67,14 +67,27 @@ def main():
     # Converting contacts back to voxel coordinates
     contacts = ct_object.apply_affine(contacts, 'inverse')
 
+    # TODO remove
+    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
+
     # Plotting results
     log("Plotting results")
-    pv_plotter = plot.plot_binary_electrodes(ct_object.mask)
-    plot.plot_ct(ct_object.ct, pv_plotter)
-    plot.plot_colored_electrodes(contacts, labels, pv_plotter)
+    pv_plotter = None
+    # TODO uncomment
+    #pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
+    #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
+    pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
+
+    # TODO remove debug
+    plane_center = ct_object.apply_affine(segmentation.DEBUG_PLANE_CENTER, 'inverse')
+    plane_normal = np.linalg.inv(ct_object.affine[:3,:3]) @ segmentation.DEBUG_PLANE_NORMAL
+    pv_plotter = plot.plot_plane(plane_center, plane_normal, pv_plotter)
 
     pv_plotter.add_axes()
     pv_plotter.show()
+    
+    # TODO remove
+    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
 
     # Saving results to CSV file
     log("Saving results to CSV file")

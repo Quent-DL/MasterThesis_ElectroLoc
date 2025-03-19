@@ -1,10 +1,11 @@
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.mixture import GaussianMixture
 import numpy as np
 from numpy.linalg import norm
-from utils import log
+from utils import log, get_regression_line_parameters
 from typing import List
 from sklearn.linear_model import LinearRegression
+
 
 def __flip_positive_x(a: np.ndarray) -> np.ndarray:
     """In a list of vectors, flips each vector if necessary, so that its
@@ -59,21 +60,24 @@ def __get_vector_K_nearest(contacts: np.ndarray, k:int) -> List[np.ndarray]:
     return neighbors, (np.stack(neighbors) - contacts[np.newaxis,:])
 
 
-def __get_dir_regression(contacts: np.ndarray, k: int) -> np.ndarray:
+def __get_regression_on_neighbors(contacts: np.ndarray, k: int) -> np.ndarray:
     """TODO write documentation"""
-    neigh, _ = __get_vector_K_nearest(contacts, k)
-    data = np.concatenate([neigh, contacts[np.newaxis,:]])
+    neigh, _ = __get_vector_K_nearest(contacts, k)    # Shape (k, N, 3)
+    # For each contact (index 1) the coordinates (index 2) 
+    # of itself and its neighbors (index 1). Shape (k+1, N, 3)
+    all_data = np.concatenate([neigh, contacts[np.newaxis,:]])    
     intercepts = []
-    dirs = []
+    directions = []
     # Fitting one regression for each set of contact and neighbors
     for i in range(contacts.shape[0]):
-        x = data[:,i,:1]
-        y = data[:,i,1:]
-        model = LinearRegression(fit_intercept=True)
-        model.fit(x, y)
-        intercepts.append(model.intercept_)
-        dirs.append(model.coef_.ravel())
-    return np.stack(intercepts), np.stack(dirs)
+        # Points and direction vectors of regression around contact i.
+        # Shapes (3,)
+        p_i, v_i = get_regression_line_parameters(all_data[:,i,:])
+        intercepts.append(p_i[1:])
+        directions.append(v_i[1:])
+    
+    # Shapes (N, 2)
+    return np.stack(intercepts), np.stack(directions)
 
 
 def __get_direction_neighbors(contacts: np.ndarray, k:int) -> np.ndarray:
@@ -187,7 +191,7 @@ def __feature_proj_plane_new(
     - intersections: an array of shape (N, 2) such that 'intersections[i]'
     contains the features of 'contacts[i]', which are computed as stated above.
     """
-    intercepts, coefs = __get_dir_regression(contacts, k)
+    intercepts, coefs = __get_regression_on_neighbors(contacts, k)
     return intercepts + xval * coefs
 
 
@@ -197,7 +201,7 @@ def __feature_line_params(
         k:int=3
 ) -> np.ndarray:
     """TODO write documentation"""
-    intercepts, coefs = __get_dir_regression(contacts, k)
+    intercepts, coefs = __get_regression_on_neighbors(contacts, k)
     return (intercepts + xval * coefs), coefs
 
 
@@ -211,7 +215,7 @@ def __feature_proj_smart_plane(
     ### Lines parameters
     # Intercepts and coefs of equations [y, z] = coefs[i] * x + intercepts[i]
     # Both of shape (N, 2)
-    intercepts, coefs = __get_dir_regression(contacts, k)
+    intercepts, coefs = __get_regression_on_neighbors(contacts, k)
     # The points and directional vectors that define the lines.
     # Such that Line[i] := {(x, y, z)[i] = p[i] + v[i]*t | t real} 
     # - Points.Shape (N, 3). Format (0, p_y[i], p_z[i])
@@ -236,8 +240,13 @@ def __feature_proj_smart_plane(
     u = np.sum(np.cross(v1, -V) * a, axis=1)   # Coordinate along v0 in plane. (N,) 
     v = np.sum(np.cross(-V, v0) * a, axis=1)    # Coordinate along v1 in plane. (N,)
 
-    return np.stack([u, v], axis=1), coefs
+    # TODO debug remove plot plane
+    global DEBUG_PLANE_CENTER, DEBUG_PLANE_NORMAL
+    DEBUG_PLANE_CENTER, DEBUG_PLANE_NORMAL = p0, n
 
+    plane_coords, angles = np.stack([u, v], axis=1), np.arctan(coefs)
+    # Giving similar weights to both the in-plane coordinates and the angles
+    return plane_coords, angles*plane_coords.std(axis=0)/angles.std(axis=0)
 
 
 def __extract_features(
@@ -321,66 +330,28 @@ def segment_electrodes(
     # Applying Gaussian Mixtures to retrieve 'labels', an array of shape (N,) 
     # that contains the label of each contact (label is in range 
     # [0, n_electrodes)). The label is the id of the electrode.
-    gauss_mixt = GaussianMixture(
+    # TODO keep or remove (mirror w/ dbscan)
+    """gauss_mixt = GaussianMixture(
         n_components=n_electrodes,
         covariance_type='full',
         n_init=5,
         init_params='k-means++',
         random_state=42
     )
-    labels = gauss_mixt.fit_predict(features)    # Shape (N,)
+    labels = gauss_mixt.fit_predict(features)    # Shape (N,)"""
 
-    return labels
+    # TODO move from postprocessing to utils + move import to top of file
+    from postprocessing import __estimate_intercontact_distance
+    dist, dist_std = __estimate_intercontact_distance(features)
+
+    # TODO keep or remove (mirror w/ GaussianMixture)
+    # TODO remove hyperparams
+    dbscan = DBSCAN(eps=dist+1*dist_std, min_samples=4)
+    labels = dbscan.fit_predict(features)    # Shape (N,)
 
 
-
-### POST PROCESSING
-
-def __postprocess(contacts, labels, n_electrodes):
-    # TODO relocate in postprocessing.py
-    log("Postprocessing electrodes")
-    labels = labels.copy()
-
-    # TODO debug so that labels end up in range [0, n_electrodes)
-    uniques = np.unique(labels)
-    while len(uniques) > n_electrodes:
-        # Regress electrode-wise
-        def __get_regression(l):
-            data = contacts[labels == l]    # shape (K, 3)
-
-            x = data[:,(1,)]
-            y = data[:,(0,2)]
-            model = LinearRegression(fit_intercept=True)
-            model.fit(x, y)
-
-            return model.intercept_, model.coef_.ravel()
-        
-        inters, dirs = [], []
-        for l in uniques:
-            inter, dir = __get_regression(l)    # Shapes (2,) and (2,)
-            inters.append(inter)
-            dirs.append(dir)
-        inters = np.stack(inters)    # Shape (K, 2)
-        dirs   = np.stack (dirs)
-
-        # Project onto both planes (x-max and x-min)
-        proj_min = inters + contacts[1,:].min() * dirs
-        proj_max = inters + contacts[1,:].max() * dirs
-        projs = np.concatenate([proj_min, proj_max], axis=1)    # Shape (K, 4)
-
-        # Distance map
-        diff = projs[:, np.newaxis, :] - projs[np.newaxis, :, :]
-        distance_map = np.sqrt(np.sum(diff**2, axis=-1))
-        n = len(uniques)
-        distance_map[range(n), range(n)] = distance_map.max()
-
-        # Selects two closest electrodes (= projections)
-        i, j = np.unravel_index(distance_map.argmin(), distance_map.shape)
-
-        # Merge similar electrodes
-        li = uniques[i]
-        lj = uniques[j]
-        labels[labels == lj] = li
-        uniques = np.unique(labels)
+    # TODO remove debug
+    global FEATURES
+    FEATURES = features
 
     return labels
