@@ -2,9 +2,11 @@ import nibabel as nib
 import numpy as np
 from typing import Tuple, List
 from datetime import datetime
+from multipledispatch import dispatch
 
 class RawCT:
-    def __init__(self, ct_path, ct_brainmask_path):
+    @dispatch(str, str)
+    def __init__(self, ct_path: str, ct_brainmask_path: str):
         # Thresholding and skull-stripping CT
         nib_ct          = nib.load(ct_path)
 
@@ -18,6 +20,16 @@ class RawCT:
         # to account for those different voxel side lengths
         self.voxel_size = np.abs(np.diag(nib_ct.affine[:3,:3] / nib_ct.affine[0,0]))
 
+    @dispatch(np.ndarray, np.ndarray, np.ndarray)
+    def __init__(self, ct: np.ndarray, mask: np.ndarray, voxel_size: np.ndarray):
+        self.ct = ct.copy()
+        self.mask = mask.copy()
+        self.voxel_size = voxel_size.copy()
+
+    
+    def copy(self):
+        """Returns a copy of the object"""
+        return RawCT(self.ct, self.mask, self.voxel_size)
 
 
 class Electrode:
@@ -39,10 +51,29 @@ class Electrode:
         # compatible with the 2D-array self.contacts
         self.contacts = np.concatenate([self.contacts, [coords]], axis=0)
 
-    def mean_distance(self) -> float:
-        distances = np.linalg.norm(self.contacts[1:] - self.contacts[:-1], axis=1)
-        return distances.mean()
-    
+    def estimate_next_contact_position(self) -> float:
+        # History of last contact vectors
+        history = self.contacts[1:] - self.contacts[:-1]
+
+        # Computing the norm of the next contact vector
+        # = mean of all previous distances
+        distances = np.linalg.norm(history, axis=1)
+        norm = distances.mean()
+
+        # Computing the direction of the next contact vector
+        # = weighted average of the last 3 contacts (in case of electrode curving)
+        prev = history[-3:]
+        n = prev.shape[0]    # number of previous vectors available
+        # the weights applied on the last three vectors
+        weights = np.array([0.225, 0.325, 0.45])   # arbitrarily chosen
+        # truncating 'weights' if n is less than 3 + re-normalizing
+        weights = weights[-n:] / np.linalg.norm(weights[-n:])
+        weighted_prev = prev * weights[:, np.newaxis]
+        dir = weighted_prev.mean(axis=0)
+        unit_dir = dir / np.linalg.norm(dir)
+
+        # Estimating the next contact's coordinates
+        return self.contacts[-1] + norm * unit_dir
 
 def get_inputs(
         ct_path: str, 
@@ -97,4 +128,6 @@ def get_structuring_element(type='cross'):
 
 def log(msg, erase=False):
     end = "\r" if erase else None
-    print(datetime.now().strftime("[%H:%M:%S]"), msg, end=end)
+    start = " --" if erase else ""
+    timestamp = datetime.now().strftime("[%H:%M:%S]")
+    print(f"{timestamp}{start} {msg}", end=end)

@@ -20,10 +20,11 @@ from typing import List
 
 
 ##### \/ \/ \/ Inputs
-input_dir = "D:\QTFE_local\Python\ElectrodesLocalization\sub11\in"
+input_dir = "D:\QTFE_local\Python\ElectrodesLocalization\sub04\in"
 ct_path              = os.path.join(input_dir, "CT.nii.gz")
 ct_mask_path         = os.path.join(input_dir, "CTMask.nii.gz")
 electrodes_info_path = os.path.join(input_dir, "entry_points.txt")
+output_dir = "D:\QTFE_local\Python\ElectrodesLocalization\sub04\out"
 ##### /\ /\ /\
 
 
@@ -269,10 +270,10 @@ if __name__ == '__main__':
     # TODO remove useless if
     if True:
         contacts = compute_contacts_centers(raw_ct)
-        path = os.path.join(input_dir, "centers_of_mass_2.txt")
+        path = os.path.join(output_dir, "centers_of_mass_2.txt")
         np.savetxt(path, contacts)
     else:
-        path = os.path.join(input_dir, "centers_of_mass2.txt")
+        path = os.path.join(output_dir, "centers_of_mass2.txt")
         contacts = np.loadtxt(path, dtype=np.float32)
     log("Computed contact centers")
 

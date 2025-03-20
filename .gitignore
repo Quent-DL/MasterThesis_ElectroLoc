@@ -2,9 +2,16 @@
 *.nii.gz
 *.p
 *.txt
+*.csv
 
 # Ignore python cache
 __pycache__
 
 # Ignore work-in-progress files
 *.ipynb
+
+
+# Unwanted folders
+0_Organizing_the_dataset
+Elikopy
+toy

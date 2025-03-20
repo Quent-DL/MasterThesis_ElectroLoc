@@ -2,7 +2,7 @@
 # Loading data
 import os
 import nibabel as nib
-from utils import get_inputs, Electrode, RawCT, log
+from utils import get_inputs, Electrode, RawCT, log, get_structuring_element
 
 # Ultimate erosion
 import numpy as np
@@ -17,11 +17,15 @@ import random
 
 # Logging and utils
 from typing import List
+from skimage.morphology import binary_dilation
+from time import perf_counter
 ##### /\ /\ /\
 
 
 ##### \/ \/ \/ Inputs
-input_dir = "D:\QTFE_local\Python\ElectrodesLocalization\sub11\in"
+data_dir   = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\sub04"
+input_dir  = os.path.join(data_dir, "in")
+output_dir = os.path.join(data_dir, "out")
 ct_path              = os.path.join(input_dir, "CT.nii.gz")
 ct_mask_path         = os.path.join(input_dir, "CTMask.nii.gz")
 electrodes_info_path = os.path.join(input_dir, "entry_points.txt")
@@ -80,13 +84,13 @@ def opti_center_of_mass(weights, labels, index):
 
 
 def compute_contacts_centers(raw_ct: RawCT, struct: np.ndarray) -> np.ndarray:
-    log("-- Computing ultimate erosion", erase=True)
+    log("Computing ultimate erosion", erase=True)
     ult_er = binary_ultimate_erosion(raw_ct.mask, struct)
     labels, n_contacts = label(ult_er)
     
     contacts_com = []
     for i in range(1, n_contacts+1):
-        log(f"-- Contact {i}/{n_contacts}", erase=True)
+        log(f"Contact {i}/{n_contacts}", erase=True)
         contacts_com.append(opti_center_of_mass(raw_ct.ct, labels, i))
 
     return np.stack(contacts_com, dtype=np.float32)
@@ -115,7 +119,7 @@ def compute_contacts_centers_with_upsampling(
     centers = set()
 
     for lyr in range(nlayers):
-        log(f"-- Layer {lyr}/{nlayers}", erase=True)
+        log(f"Layer {lyr}/{nlayers}", erase=True)
 
         # All the centers detected in this layer
         u_curr_centers = []
@@ -176,6 +180,9 @@ def find_closest(
     Output:
     - best (np.ndarray): the closest point in 'target' found, of shape (3,)."""
 
+    # TODO: replace 'closest distance' by 'best fit' that accounts
+    # for both distance and angle
+
     best_idx, best_dist = None, 1e20
 
     for i in indices:
@@ -217,6 +224,12 @@ def segment_electrode(
     c_0 = find_closest(electrode.head, contacts_com, indices, dist_func, update_indices=False)
     electrode.add_contact(c_0)
 
+    # TODO : replace the algo to find c_1 by the following:
+    # - sort all contacts' indices by increasing distance to c_0
+    # - iterate over the sorted contacts
+    # - select as c_1 the first contact closer to the center than c_0
+    # assumption: there is no other electrode closer to c_0 than the true c_1
+
     # Estimating the position of the second contact by starting from first contact
     # and moving along the vector T-H
     for j in range(1, NB_ATTEMPTS_C1+1):
@@ -232,14 +245,15 @@ def segment_electrode(
     c_end = find_closest(electrode.tail, contacts_com, indices, dist_func, update_indices=False)
     iter = 0
     while not are_same_contact(electrode.contacts[-1], c_end) and iter < MAX_ITER:
-        c_pp, c_p = electrode.contacts[-2], electrode.contacts[-1]
-        # TODO confirm: use of unit vector and mean distance
-        dir_vector = (c_p - c_pp) / np.linalg.norm(c_p - c_pp)
-        c_i_approx = c_p + dir_vector * electrode.mean_distance()
+        c_i_approx = electrode.estimate_next_contact_position()
         c_i = find_closest(c_i_approx, contacts_com, indices, dist_func, update_indices=False) # TODO remove update_indices=False
         electrode.add_contact(c_i)
 
         iter += 1
+
+        if are_same_contact(electrode.contacts[-2], electrode.contacts[-1]):
+            break
+            raise RuntimeError("The same contact has been added twice to the electrode")
     
         if iter == MAX_ITER:
             pass # TODO handle case
@@ -269,14 +283,14 @@ def visualize_contacts(
 
     # To avoid displaying a too-high-resolution volume, we subsample it
     # (-> reduces computation time and RAM required)
-    SF = 2    # subsample factor (must be integer)
+    SF = 1    # subsample factor (must be integer)
     ct = raw_ct.ct[::SF,::SF,::SF]
     ct_electrodes = raw_ct.mask[::SF,::SF,::SF]
 
     grid = pv.ImageData()
     grid.dimensions = np.array(ct.shape) + 1
     grid.cell_data['values'] = ct.flatten(order='F')
-    plotter.add_volume(grid, cmap="gray", opacity=[0,0.045])
+    plotter.add_volume(grid, cmap="gray", opacity=[0,0.045/2])
 
     mesh_ct = pv.wrap(ct_electrodes)
     mesh_ct.cell_data['intensity'] = ct_electrodes[:-1, :-1, :-1].flatten(order='F')
@@ -286,17 +300,17 @@ def visualize_contacts(
     #plotter.add_volume(subsampled_ct, cmap="gray", opacity=[0, 0.05])
 
     # Debug: switch between colored or monochrome contacts
-    if True:
+    if False:
         # Iterate over each electrode and add its contacts to the plotter
         for e in electrodes:
             color = [random.random() for _ in range(3)]        # random electrode color
             point_cloud = pv.PolyData(e.contacts / SF)
             plotter.add_points(point_cloud, color=color, point_size=5.0, 
                             render_points_as_spheres=True)
-    else:   
+    else:
         # Plotting the detected contact centers
         contacts_cloud = pv.PolyData(all_contacts / SF)
-        plotter.add_points(contacts_cloud, point_size=5.0, 
+        plotter.add_points(contacts_cloud, point_size=5.0/SF, 
                         render_points_as_spheres=True)
 
     
@@ -313,35 +327,46 @@ if __name__ == '__main__':
     log("Loading inputs")
     raw_ct, electrodes = get_inputs(ct_path, ct_mask_path, electrodes_info_path)
 
-
-    # -- Preprocessing
-    log("Preprocessing input")
-    # TODO confirm: Rescaling the image for isotropic results (equal voxels size)
-    #raw_ct.ct = zoom(raw_ct.ct, raw_ct.voxel_size, order=1)
-    #raw_ct.mask = zoom(raw_ct.mask, raw_ct.voxel_size, order=1)
-    #raw_ct.voxel_size /= raw_ct.voxel_size
-    # Masking the electrodes based on a threshold
-    raw_ct.mask &= raw_ct.ct > ELECTRODE_THRESHOLD
-    # TODO confirm: Dilating the mask
-    #raw_ct.mask = binary_dilation(raw_ct.mask, get_structuring_element('cross'))
-
-
-    # -- Computing the center of mass of the electrode contacts
     log("Computing contact centers")
+    path = os.path.join(output_dir, "centers_of_mass_predilate_prezoom_UF=1_struct=cross.txt")
     # TODO remove debugging 'if'
-    if True:
-        struct = get_structuring_element('cube')
-        contacts = compute_contacts_centers(raw_ct, struct)
+    if False:
+        # -- Preprocessing
+        log("Preprocessing input", erase=True)
+        # TODO confirm: Rescaling the image for isotropic results (equal voxels size)
+        comput_ct = raw_ct.copy()
+        upsampling_factors = raw_ct.voxel_size
+        comput_ct.ct = zoom(raw_ct.ct, upsampling_factors, order=1)
+        comput_ct.mask = zoom(raw_ct.mask, upsampling_factors, order=1)
+        comput_ct.voxel_size /= upsampling_factors
+        # Masking the electrodes based on a threshold
+        comput_ct.mask &= (comput_ct.ct > ELECTRODE_THRESHOLD)
+        # TODO confirm: Dilating the mask
+        comput_ct.mask = binary_dilation(comput_ct.mask, get_structuring_element('cross'))
+        
+        # -- Computing the center of mass of the electrode contacts
+        struct = get_structuring_element('cross')
+        contacts = compute_contacts_centers(comput_ct, struct)
+
+        # Converting the contact back to the voxel space scale
+        contacts /= upsampling_factors
+        
         np.savetxt(path, contacts)
     else:
-        path = os.path.join(input_dir, "centers_of_mass_2.txt")
         contacts = np.loadtxt(path, dtype=np.float32)
 
     # -- Classifying the contacts to fill the electrode objects
     log("Classifying contacts")
+    # A function to compute euclidian distance despite the anisotopric voxel shape
     dist_func = lambda a, b: np.linalg.norm((a-b)*raw_ct.voxel_size)
-    segment_all_electrodes(electrodes, contacts, dist_func)
+    # TODO uncomment
+    #segment_all_electrodes(electrodes, contacts, dist_func)
+
+    # TODO: save contacts to a CSV file
+
+    # TODO (not here) FIX SCALING BETWEEN CONTACTS AND VISUALIZATION
 
     # -- Vizualizing the result
     log("Plotting contacts")
+    raw_ct.mask &= (raw_ct.ct > ELECTRODE_THRESHOLD)    # to isolate electrodes
     visualize_contacts(raw_ct, electrodes, contacts)
