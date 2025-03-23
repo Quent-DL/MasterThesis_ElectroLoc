@@ -14,10 +14,11 @@ def __compute_dissimilarity_lines(line_a, line_b):
     p_a, v_a = line_a[:3], line_a[3:]
     p_b, v_b = line_b[:3], line_b[3:]
     # Cosine of the angle between the two directions (in range [0, 1])
-    cos_angle = np.dot(v_a, v_b) / (norm(v_a) * norm(v_b))
+    cos_angle = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
 
     if 1-cos_angle < 1e-8:
         # The lines are (almost) perfectly parallel -> use a specific formula
+        # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
         dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
     else:
         # The angle between the line is sufficient to apply the general formula
@@ -43,7 +44,7 @@ def __compute_dissimilarity_matrix(models):
 def __compute_neighborhood_matrix(contacts: np.ndarray) -> np.ndarray:
     """TODO write documentation"""
     # Shapes (N, 3)
-    points, directions = __get_regression_params_on_neighbors(contacts)
+    points, directions = __get_regression_params_on_neighbors(contacts, 3)
     models = np.concatenate([points, directions], axis=1)
     return 1/__compute_dissimilarity_matrix(models)
 
@@ -51,7 +52,7 @@ def __compute_neighborhood_matrix(contacts: np.ndarray) -> np.ndarray:
 def __random_models_sampling(contacts, n_models):
     """TODO write documentation"""
     models = []
-    generator = np.random.get_rng()
+    generator = np.random.default_rng()
     # The samples to use for the models. Shape (n_models, 2, 3).
     # '2' is the number of samples needed to generate one model (i.e. one line)
     # '3' is the number of dimensions of each sample (i.e. contact)
@@ -94,7 +95,8 @@ def __get_lines_points_distance(
     distances = []
     for p, v in zip(lines_points, lines_directions):
         distances.append(dist_1_line(p, v))
-    np.stack(distances, axis=-1)
+    # Shape (N, K)
+    return np.stack(distances, axis=-1)
 
 
 def __compute_labels_and_energy(
@@ -163,6 +165,7 @@ def __reduce_models(models, labels, min_inliers):
 
     ### Removing unsupported models, starting from last 
     # (to avoid concurrent modification between modif and iteration)
+    n_models = models.shape[0]
     for k in range(n_models-1, -1, -1):
         if np.sum(labels==k) < min_inliers:
             models = np.delete(models, k, axis=0)
@@ -189,7 +192,7 @@ def segment_electrodes(
     models = __random_models_sampling(contacts, n_init_models)
 
     # Assigning each contact to one model and computing the resulting energy
-    energy_prev = None
+    energy_prev = 1e127
     labels, energy_now = __compute_labels_and_energy(
         contacts, models, neighborhood_matrix, lambda_weight)
     

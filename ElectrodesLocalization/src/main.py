@@ -1,7 +1,7 @@
 # Local modules
 from utils import NibCTWrapper, OutputCSV, log
 import contacts_isolation
-import segmentation
+import segmentation_multimodel
 import postprocessing
 import plot
 
@@ -55,7 +55,7 @@ def main():
 
     # Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels = segmentation.segment_electrodes(contacts, N_ELECTRODES)
+    labels = segmentation_multimodel.segment_electrodes(contacts, N_ELECTRODES)
 
     # Assigning an id to all contacts of each electrode, based on depth
     ct_center_physical = ct_object.apply_affine(
@@ -67,9 +67,6 @@ def main():
     # Converting contacts back to voxel coordinates
     contacts = ct_object.apply_affine(contacts, 'inverse')
 
-    # TODO remove
-    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
-
     # Plotting results
     log("Plotting results")
     pv_plotter = None
@@ -77,17 +74,10 @@ def main():
     #pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
     #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
     pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
-
-    # TODO remove debug
-    plane_center = ct_object.apply_affine(segmentation.DEBUG_PLANE_CENTER, 'inverse')
-    plane_normal = np.linalg.inv(ct_object.affine[:3,:3]) @ segmentation.DEBUG_PLANE_NORMAL
-    pv_plotter = plot.plot_plane(plane_center, plane_normal, pv_plotter)
+    # TODO also plot models
 
     pv_plotter.add_axes()
     pv_plotter.show()
-    
-    # TODO remove
-    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
 
     # Saving results to CSV file
     log("Saving results to CSV file")
