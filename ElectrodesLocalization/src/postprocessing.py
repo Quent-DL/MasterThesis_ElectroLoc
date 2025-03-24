@@ -228,7 +228,8 @@ def __estimate_intercontact_distance(
 def postprocess(
         contacts: np.ndarray, 
         labels: np.ndarray,
-        ct_center: np.ndarray
+        ct_center: np.ndarray,
+        models: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """TODO write documentation"""
 
@@ -237,7 +238,7 @@ def postprocess(
     # Re-classify contacts using linear/quadratic regression
     # and assigning closest regression to each contact
     # TODO uncomment
-    labels = __reassign_labels_closest(contacts, labels)
+    #labels = __reassign_labels_closest(contacts, labels)
 
     # ...
 

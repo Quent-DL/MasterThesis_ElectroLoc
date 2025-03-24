@@ -1,4 +1,6 @@
 import numpy as np
+from numpy import cross
+from numpy.linalg import norm
 import nibabel as nib
 from datetime import datetime
 from typing import Literal, Tuple
@@ -25,7 +27,7 @@ def log(msg: str, erase: bool=False) -> None:
 def get_regression_line_parameters(
         points: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-    """TODO write documentation
+    """Computes a linear regression using the given 3-dimensional points.
     
     ### Input:
     - points: an array of shape (K, 3) that contains the 3D coordinates of
@@ -65,6 +67,140 @@ def distance_matrix(coords: np.ndarray) -> np.ndarray:
     diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
     distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
     return distance_matrix
+
+
+class ElectrodeModel:
+    """An interface for modelling electrodes"""
+
+    # The minimum number of samples needed to compute the model parameters
+    MIN_SAMPLES = 0
+
+    def __init__(self, samples: np.ndarray):
+        """Creates a regression model for an electrode.
+        
+        ### Input:
+        - samples: the coordinates of the K samples used to perform regression 
+        and compute the model parameters. Shape (K, 3).
+        
+        ### Throws:
+        - ValueError if K is insufficient to compute the number of parameters."""
+        raise RuntimeError(
+            "ElectrodeModel is an interface and must not be instantiated.")
+    
+    def compute_dissimilarity(self, other) -> float:
+        """Computes the dissimilarity between this model and the given one.
+        
+        ### Input:
+        - other_model: the other model.
+        
+        ### Output:
+        - dissimilarity: a positive measure of dissimilarity between the two 
+        models. A high value means that the models are very different from one 
+        another, while a value equal to zero means they are identical."""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def compute_distance(self, contacts: np.ndarray) -> np.ndarray:
+        """Computes the euclidian distance between this model and each of the
+        given contacts.
+        
+        ### Input:
+        - contacts: the 3D coordinates of the N points. Shape (N, 3).
+        
+        ### Output:
+        - distance: the euclidian distance between each contact and its
+        closest projection onto the model. Shape (N,)."""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def recompute(self, samples: np.ndarray) -> None:
+        """Recomputes and overwrites the model parameters using a new set
+        of samples. Modifies the model internally.
+
+        Warning: if the number of samples is insufficient to compute the model
+        parameters, the model is not updated and this function call is ignored.
+        
+        ### Input:
+        - samples: the set of N 3-dimensional coordinates used to compute
+        the model parameters. Shape (N, 3).
+        
+        ### Output:
+        - None"""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def merge(self, other, w_self: float, w_other: float) -> None:
+        """Merges the parameters of two models, and overwrites this model
+        with the result. Modifies the model internally.
+        
+        ### Inputs:
+        - other: the other model to merge with this one.
+        - w_self: the weight given to the parameters of this model.
+        - w_other: the weight given to the parameters of the other model.
+        
+        Note: the merged model is computed following the formula:
+
+        params_merged = (w_self * params_self + w_other * params_other)
+        / (w_self + w_other)
+        
+        ### Output:
+        None"""
+        raise NotImplementedError("Method not implemented by child class.")
+    
+
+class LinearElectrodeModel(ElectrodeModel):
+    """A linear model for straight electrodes"""
+    MIN_SAMPLES = 2
+
+    def __init__(self, samples: np.ndarray):
+        if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
+            raise ValueError("Expected at least 2 samples to create model."
+                             f"Got {len(samples)}.")
+        self.point, self.direction = get_regression_line_parameters(samples)
+
+    def compute_dissimilarity(self, other) -> float:
+        if type(other) != LinearElectrodeModel:
+            raise ValueError("'other' must be of type LinearElectrodeModel."\
+                             f"Got {type(other)}.")
+        p_a, v_a = self.point, self.direction
+        p_b, v_b = other.point, other.direction
+
+        # Cosine of the angle between the two directions (in range [0, 1])
+        cos_angle = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
+
+        if 1-cos_angle < 1e-8:
+            # The lines are (almost) perfectly parallel -> use a specific formula
+            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
+            dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
+        else:
+            # The angle between the line is sufficient to apply the general formula
+            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-skew-lines/
+            dist_points = (abs(np.dot(p_b-p_a, cross(v_a, v_b))) 
+                        / norm(cross(v_a, v_b)))
+
+        # Second term used to give score 0 to identical models
+        return (1 + dist_points) / (0.01 + cos_angle) - 1/(0.01+1)
+
+    def compute_distance(self, contacts: np.ndarray) -> np.ndarray:
+        p, v = self.point, self.direction
+        # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
+        return norm(np.cross(v, p-contacts), axis=1) / norm(v)
+    
+    def recompute(self, samples: np.ndarray) -> None:
+        if len(samples) < self.MIN_SAMPLES:
+            # Ignore if not enough samples given
+            return
+        self.point, self.direction = get_regression_line_parameters(samples)
+
+    def merge(self, other, w_self: float, w_other: float) -> None:
+        if type(other) != LinearElectrodeModel:
+            raise ValueError("'other' must be of type LinearElectrodeModel."\
+                             f"Got {type(other)}.")
+        
+        # Renaming for shorter formulas
+        p_a, v_a = self.point, self.direction
+        p_b, v_b = other.point, other.direction
+        w_a, w_b = w_self, w_other
+
+        self.point     = (p_a*w_a + p_b*w_b) / (w_a + w_b)
+        self.direction = (v_a*w_a + v_b*w_b) / (w_a + w_b)
 
 
 class NibCTWrapper:

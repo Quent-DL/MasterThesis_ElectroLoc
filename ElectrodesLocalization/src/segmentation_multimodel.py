@@ -1,122 +1,106 @@
 # Ref: DOI - 10.1007/s11263-011-0474-7
 
-from segmentation import __get_regression_params_on_neighbors
-from utils import get_regression_line_parameters
+from segmentation import __get_vector_K_nearest
+from utils import ElectrodeModel, LinearElectrodeModel
 
 import numpy as np
 from numpy import cross
 from numpy.linalg import norm
+from typing import List, Type
 
 
-def __compute_dissimilarity_lines(line_a, line_b):
+def __compute_dissimilarity_matrix(models: List[ElectrodeModel]) -> np.ndarray:
     """TODO write documentation"""
-
-    p_a, v_a = line_a[:3], line_a[3:]
-    p_b, v_b = line_b[:3], line_b[3:]
-    # Cosine of the angle between the two directions (in range [0, 1])
-    cos_angle = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
-
-    if 1-cos_angle < 1e-8:
-        # The lines are (almost) perfectly parallel -> use a specific formula
-        # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
-        dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
-    else:
-        # The angle between the line is sufficient to apply the general formula
-        # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-skew-lines/
-        dist_points = (abs(np.dot(p_b-p_a, cross(v_a, v_b))) 
-                       / norm(cross(v_a, v_b)))
-
-    return (1 + dist_points) / (0.01 + cos_angle)
-
-
-def __compute_dissimilarity_matrix(models):
-    """TODO write documentation"""
-    n_models = models.shape[0]
+    n_models = len(models)
     dissim_matrix = np.empty((n_models, n_models), dtype=np.float64)
-    for i in range(n_models):
-        for j in range(i, n_models):
-            dissim = __compute_dissimilarity_lines(models[i], models[j])
+    for i, model_i in enumerate(models):
+        for j, model_j in enumerate(models[i:]):
+            dissim = model_i.compute_dissimilarity(model_j)
             dissim_matrix[i, j] = dissim
             dissim_matrix[j, i] = dissim
     return dissim_matrix
 
 
-def __compute_neighborhood_matrix(contacts: np.ndarray) -> np.ndarray:
+def __compute_neighborhood_matrix(
+        contacts: np.ndarray,
+        model_cls: Type[ElectrodeModel],
+        c: float=1.0
+) -> np.ndarray:
     """TODO write documentation"""
-    # Shapes (N, 3)
-    points, directions = __get_regression_params_on_neighbors(contacts, 3)
-    models = np.concatenate([points, directions], axis=1)
-    return 1/__compute_dissimilarity_matrix(models)
+    # The neighbors of each contact. Shape (k, N, 3)
+    neigh, _ = __get_vector_K_nearest(contacts, model_cls.MIN_SAMPLES)
 
+    # For each contact (index 1) the coordinates (index 2) 
+    # of itself and its neighbors (index 1). Shape (k+1, N, 3)
+    all_samples = np.concatenate([neigh, contacts[np.newaxis,:]])
 
-def __random_models_sampling(contacts, n_models):
-    """TODO write documentation"""
     models = []
+    n_contacts = all_samples.shape[1]
+    for i in range(n_contacts):
+        model = model_cls(all_samples[:,i,:])
+        models.append(model)
+    return np.exp(- __compute_dissimilarity_matrix(models) / c**2)
+
+
+def __random_models_sampling(
+        contacts: np.ndarray, 
+        n_models: np.ndarray, 
+        model_cls: Type[ElectrodeModel]
+) -> List[ElectrodeModel]:
+    """TODO write documentation"""
     generator = np.random.default_rng()
     # The samples to use for the models. Shape (n_models, 2, 3).
     # '2' is the number of samples needed to generate one model (i.e. one line)
     # '3' is the number of dimensions of each sample (i.e. contact)
     samples = generator.choice(contacts, (n_models, 2), replace=False, axis=0)
 
+    models = []
     for k in range(n_models):
-        point, direction = get_regression_line_parameters(samples[k])
-        models.append(np.concatenate([point, direction]))
+        model = model_cls(samples[k])
+        models.append(model)
     
-    return np.stack(models)
+    return models
 
 
-def __get_lines_points_distance(
+def __compute__points_models_distances(
         contacts: np.ndarray,
-        lines_points: np.ndarray,
-        lines_directions: np.ndarray
+        models: List[ElectrodeModel]
 ) -> np.ndarray:
-    """Returns the distance between each point and the given lines.
+    """Returns the distance between each point and the given models.
     
     ### Inputs:
     - contacts: the points in 3D space. Shape (N, 3).
-    - lines_points: the points (0, p_y, p_z) by which each of the K lines 
-    passes. Shape (K, 3) or (3,).
-    - lines_directions: the direction vectors (1, v_y, v_z) of the lines.
-    Shape must be identical to that of 'lines_points'.
+    - models: the list of K models (e.g. linear regression, ...).
     
     ### Output:
     - distances: the distance matrix between each contact (point) and each
-    line. Shape (N,) or (N, K), depending on the shapes of 'lines_points' and
-    'lines_directions'."""
+    model. Shape (N, K)"""
 
     # Returns distances for one line. Output shape (N,)
-    dist_1_line = lambda p, v: norm(np.cross(v, p-contacts), axis=1) / norm(v)
-
-    if len(lines_points.shape) == 1:
-        # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
-        return dist_1_line(lines_points, lines_directions)
-    
-    # K lines
     distances = []
-    for p, v in zip(lines_points, lines_directions):
-        distances.append(dist_1_line(p, v))
-    # Shape (N, K)
+    for model in models:
+        distances.append(model.compute_distance(contacts))
     return np.stack(distances, axis=-1)
 
 
 def __compute_labels_and_energy(
-        contacts, 
-        models,
-        neighborhood_matrix,
-        lambda_weight):
+        contacts: np.ndarray, 
+        models: List[ElectrodeModel],
+        neighborhood_matrix: np.ndarray,
+        lambda_weight: float
+) -> float:
     """TODO write documentation"""
     # TODO add outlier system with params = (cost, threshold)
-    lines_points     = models[:,:3]
-    lines_directions = models[:,3:]
 
     # Shape (N, K)
-    distances = __get_lines_points_distance(
-        contacts, lines_points, lines_directions)
-    labels = distances.argmin(axis=1)
-    # Distance between contact and its closest line
+    distances = __compute__points_models_distances(contacts, models)
+    labels = distances.argmin(axis=1)    # Shape (N,)
+    # Sum of distances between each contact and its closest model
     model_cost = distances.min(axis=1).sum()
+     
+    # Using Potts' model for computing regularization term
+    deltas = labels[np.newaxis,:] != labels[:, np.newaxis]
 
-    deltas = labels[np.newaxis,:] != labels[:, np.newaxis]    # Potts model
     # Penalty for having similar contacts with different labels
     neighborhood_penalty = np.sum(deltas * neighborhood_matrix)
 
@@ -124,23 +108,22 @@ def __compute_labels_and_energy(
     return labels, tot_energy
 
 
-def __refine_models(contacts, models, labels):
+def __recompute_models(
+        contacts: np.ndarray, 
+        models: List[ElectrodeModel], 
+        labels: np.ndarray
+) -> None:
     """TODO write documentation"""
-    for k, _ in enumerate(models):
+    for k, model in enumerate(models):
         inliers = contacts[labels == k]    # Shape (NB_INLIERS, 3)
-        if len(inliers) <= 1:
-            continue
-        point, direction = get_regression_line_parameters(inliers)
-        models[k] = np.concatenate([point, direction])
-    return models
+        model.recompute(inliers)
 
 
-def __merge_models(model_a, weight_a, model_b, weight_b):
-    """TODO write documentation"""
-    return (model_a*weight_a + model_b*weight_b) / (weight_a + weight_b)
-
-
-def __reduce_models(models, labels, min_inliers):
+def __reduce_models(
+        models: List[ElectrodeModel], 
+        labels: np.ndarray, 
+        min_inliers: int
+) -> List[ElectrodeModel]:
     """TODO write documentation"""
     # Account for:
     # - number of inliers
@@ -149,7 +132,7 @@ def __reduce_models(models, labels, min_inliers):
     ### Merging similar models
 
     # Computing dissimilarity between all pairs of models (ignoring diagonal)
-    n_models = models.shape[0]
+    n_models = len(models)
     dissim_scores = __compute_dissimilarity_matrix(models)
     dissim_scores[range(n_models),range(n_models)] = dissim_scores.max()
 
@@ -157,10 +140,9 @@ def __reduce_models(models, labels, min_inliers):
     i, j = np.unravel_index(dissim_scores.argmin(), dissim_scores.shape)
     n_i = np.sum(labels==i)
     n_j = np.sum(labels==j)
-    merged = __merge_models(models[i], n_i, models[j], n_j)
 
-    # Updating the models
-    models[i] = merged
+    # Merging the model
+    models[i].merge(models[j], n_i, n_j)
     models = np.delete(models, j, axis=0)   # copy of 'models' without model j
 
     ### Removing unsupported models, starting from last 
@@ -176,20 +158,24 @@ def __reduce_models(models, labels, min_inliers):
 def segment_electrodes(
         contacts: np.ndarray,
         n_electrodes: int,
-        return_models: bool=False
 ) -> np.ndarray:
     """TODO write documentation"""
 
     # TODO tweak hyperparams
     n_init_models = 5 * n_electrodes
     lambda_weight = 1
-    neighborhood_matrix = __compute_neighborhood_matrix(contacts)
     min_inliers = 2
     max_init = 1000
     energy_tol = 1e-6
+    neighborhood_regul_c = 2.0
+    model_cls = LinearElectrodeModel
+
+    neighborhood_matrix = __compute_neighborhood_matrix(
+        contacts, model_cls, neighborhood_regul_c)
 
     # Proposing initial models through random sampling
-    models = __random_models_sampling(contacts, n_init_models)
+    models = __random_models_sampling(
+        contacts, n_init_models, model_cls)
 
     # Assigning each contact to one model and computing the resulting energy
     energy_prev = 1e127
@@ -204,7 +190,7 @@ def segment_electrodes(
         init += 1
 
         # Refining the models based on their spatial support
-        models = __refine_models(contacts, models, labels)
+        __recompute_models(contacts, models, labels)
 
         # Merging similar models, or deleting those with insufficient support
         if len(models) > n_electrodes:
@@ -215,9 +201,4 @@ def segment_electrodes(
         labels, energy_now = __compute_labels_and_energy(
             contacts, models, neighborhood_matrix, lambda_weight)
         
-    if return_models:
-        lines_points     = models[:,:3]
-        lines_directions = models[:,3:]
-        return labels, lines_points, lines_directions
-    else:
-        return labels
+    return labels, models

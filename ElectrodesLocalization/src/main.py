@@ -55,14 +55,15 @@ def main():
 
     # Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels = segmentation_multimodel.segment_electrodes(contacts, N_ELECTRODES)
+    labels, models = segmentation_multimodel.segment_electrodes(
+        contacts, N_ELECTRODES)
 
     # Assigning an id to all contacts of each electrode, based on depth
     ct_center_physical = ct_object.apply_affine(
         coords=np.array(ct_object.ct.shape)/2, 
         mode='forward')
     contacts, labels, contacts_ids = postprocessing.postprocess(
-        contacts, labels, ct_center_physical)
+        contacts, labels, ct_center_physical, models)
 
     # Converting contacts back to voxel coordinates
     contacts = ct_object.apply_affine(contacts, 'inverse')
