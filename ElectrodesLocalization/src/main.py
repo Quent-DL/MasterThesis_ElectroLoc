@@ -3,6 +3,7 @@ from utils import NibCTWrapper, OutputCSV, log
 import contacts_isolation
 import segmentation_multimodel
 import postprocessing
+import validation
 import plot
 
 # External modules
@@ -18,13 +19,16 @@ def main():
     ELECTRODE_THRESHOLD = 2500
     N_ELECTRODES = (8 if not DEBUG_USE_SYNTH else 5)
 
-    # Inputs
-    data_dir          = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\"\
-        f"data\\{path_suffix}"
+    # Inputs for algorithm
+    data_dir          = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+                         f"data\\{path_suffix}")
     ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
     ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
     contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
     output_path       = os.path.join(data_dir, "out\\electrodes.csv")
+    # Inputs for validation
+    ground_truth_path = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+                        f"data_ground_truths\\{path_suffix}\\ground_truth.csv")
 
     # Loading the data
     log("Loading data")
@@ -64,6 +68,13 @@ def main():
         mode='forward')
     contacts, labels, contacts_ids = postprocessing.postprocess(
         contacts, labels, ct_center_physical, models)
+    
+    # Retrieving stats about distance error
+    _, _, _, _, stats_print = validation.validate_contacts_position_from_file(
+        contacts, 
+        ground_truth_path,
+        lambda vox_coords: ct_object.apply_affine(vox_coords, 'forward')
+    )
 
     # Converting contacts back to voxel coordinates
     contacts = ct_object.apply_affine(contacts, 'inverse')
@@ -72,7 +83,7 @@ def main():
     log("Plotting results")
     pv_plotter = None
     # TODO uncomment
-    #pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
+    pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
     #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
     pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
     # TODO also plot models
@@ -83,6 +94,9 @@ def main():
     # Saving results to CSV file
     log("Saving results to CSV file")
     output_csv.save_output(contacts, labels, contacts_ids)
+
+    print(stats_print)
+
 
 if __name__ == '__main__':
     main()
