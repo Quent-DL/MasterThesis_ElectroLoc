@@ -1,10 +1,8 @@
 import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
-from typing import Tuple
-from sklearn.linear_model import LinearRegression
-import statistics
-from utils import get_regression_line_parameters, distance_matrix
+from typing import Tuple, List
+from utils import get_regression_line_parameters, distance_matrix, ElectrodeModel
 
 
 def __sort_indices_by_contact_depth(
@@ -147,7 +145,7 @@ def  __reassign_labels_closest(
     print(f"{to_update.nonzero()[0].shape[0]} contacts reassigned out of {(labels==-1).nonzero()[0].shape[0]} ")
     labels[to_update] = dists[to_update]
     return labels
-
+    
 
 def __merge_similar_electrodes(
         contacts: np.ndarray, 
@@ -213,27 +211,34 @@ def __estimate_intercontact_distance(
     # For each contact, the distance to its closest neighbor. Shape (N,)
     distances_neigh = distance_map.min(axis=1)
 
-    # 1st approximation of intercontact distance: median to ignore high values
-    dist_median = statistics.median(distances_neigh)
-    dist_std    = distances_neigh.std()
+    # Identifying the mode of the histogram
+    step = 0.2
+    bins = np.arange(0, distances_neigh.max()+step, step)
+    hist, _ = np.histogram(distances_neigh, bins)
+    mode = hist.argmax()    # index of the modal bin
 
-    # 2nd approximation: using mean in the region around the median
+    # Applying mean to modal bin and neighboring bins
     dist = distances_neigh[
-        (dist_median-dist_std < distances_neigh) 
-        & (distances_neigh < dist_median+dist_std)].mean()
+        (bins[mode-1] < distances_neigh) 
+        & (distances_neigh < bins[mode+2])].mean()
 
-    return dist, dist_std
+    return dist, distances_neigh.std()
 
 
 def postprocess(
         contacts: np.ndarray, 
         labels: np.ndarray,
         ct_center: np.ndarray,
-        models: np.ndarray
+        models: List[ElectrodeModel],
+        intercontact_distance: float=None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """TODO write documentation"""
 
-    # TODO write
+    # TODO write rest of implementation of the function
+
+    if intercontact_distance is None:
+        intercontact_distance = __estimate_intercontact_distance(contacts)
+
 
     # Re-classify contacts using linear/quadratic regression
     # and assigning closest regression to each contact
@@ -242,7 +247,13 @@ def postprocess(
 
     # ...
 
-    # Computing the positional id of each contact along its electrode
+    # Computing the electrode-wise positional id of each contact
     positions_ids = __get_electrodes_contacts_ids(contacts, labels, ct_center)
+
+    # Sorting contacts by electrode id, then positional id
+    order = np.lexsort(keys=(positions_ids, labels))
+    contacts      = contacts[order]
+    labels        = labels[order]
+    positions_ids = positions_ids[order]
 
     return contacts, labels, positions_ids
