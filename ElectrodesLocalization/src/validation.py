@@ -22,18 +22,53 @@ def __validate_contacts_position(
         # Expressing ground truth in same coordinates space as detected contacts
         ground_truth = transform_gt(ground_truth)
 
-    distances = distance_matrix(detected_contacts, ground_truth)
-    closest_GT_to_DT = distances.argmin(axis=1)
-    closest_DT_to_GT = distances.argmin(axis=0)
+    distances_global = distance_matrix(detected_contacts, ground_truth)
 
-    # Finding matches between DT and GT
-    # A match happens when a dt and a gt are mutually the closest to each other
+    # indices of the matched and single contacts (both DT or GT)
     matched_DT = []
     matched_GT = []
-    for i, _ in enumerate(ground_truth):
-        if closest_GT_to_DT[closest_DT_to_GT[i]] == i:
-            matched_GT.append(i)
-            matched_DT.append(closest_DT_to_GT[i])
+    single_DT  = np.arange(len(detected_contacts))
+    single_GT  = np.arange(len(ground_truth))
+
+    iter_nb = 0
+    keep_looping = True
+
+    # Keep looping as long as matches are found
+    while keep_looping:
+        # Compute mean and std of current matches
+        if iter_nb != 0:
+            matched_distances = distances_global[np.array(matched_DT), np.array(matched_GT)]
+            mtch_mean = matched_distances.mean()
+            mtch_std = matched_distances.std()
+
+        # Compute distance matrix between non-matched (= single) contacts
+        distances_singles = distances_global[np.ix_(
+            np.array(single_DT), np.array(single_GT))]
+        closest_GT_to_DT = distances_singles.argmin(axis=1)
+        closest_DT_to_GT = distances_singles.argmin(axis=0)
+
+        # -- First round of matches --
+        # Finding mutual matches between the still-single DT and GT
+        # A match happens when two single dt and gt 
+        # are mutually closest to each other AND within reasonable distance
+        keep_looping = False
+        for single_idx, global_idx in enumerate(single_GT):
+            if closest_GT_to_DT[closest_DT_to_GT[single_idx]] == single_idx:
+                # dt and gt mutually closest among single contacts
+                if iter_nb == 0 or distances_singles[closest_DT_to_GT[single_idx], single_idx] < mtch_mean + 5*mtch_std:
+                    # dt and gt are within reasonable distance
+                    matched_GT.append(global_idx)
+                    matched_DT.append(single_DT[closest_DT_to_GT[single_idx]])
+                    keep_looping = True
+
+        # Updating list of contacts (gt and dt) that are still single
+        single_GT = set(range(len(ground_truth))).difference(matched_GT)
+        single_GT = np.array(list(single_GT))
+
+        single_DT = set(range(len(detected_contacts))).difference(matched_DT)
+        single_DT = np.array(list(single_GT))
+
+        iter_nb += 1
     
     # Finding missing contacts (False Negative)
     # A missing contact happens when a gt is not matched to any dt
@@ -45,7 +80,7 @@ def __validate_contacts_position(
     excess = set(range(len(detected_contacts))).difference(matched_DT)
 
     # Computing the distance between the actually matched contacts (= relevant)
-    rlvt_distances = distances[np.array(matched_DT), np.array(matched_GT)]
+    rlvt_distances = distances_global[np.array(matched_DT), np.array(matched_GT)]
 
     stat_prints = ("\n"
         "==================================================\n"
@@ -55,7 +90,7 @@ def __validate_contacts_position(
         f"    ({len(matched_DT)} matched, {len(excess)} excess)\n"
         f"Missing       : {len(missing)}\n"
         "\n"
-        "--------[ DISTANCE OF MATCHED PAIRS ]-------------\n"
+        "-------------[ DISTANCE ERROR ]-------------------\n"
         f"Mean: {rlvt_distances.mean():<9.3f}    "
             f"Std: {rlvt_distances.std():<9.3f}\n"
         f"Min:  {rlvt_distances.min():<9.3f}    "

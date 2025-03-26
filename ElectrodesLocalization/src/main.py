@@ -70,6 +70,7 @@ def main():
         contacts, labels, ct_center_physical, models)
     
     # Retrieving stats about distance error
+    log("Validating results")
     _, _, _, _, stats_print = validation.validate_contacts_position_from_file(
         contacts, 
         ground_truth_path,

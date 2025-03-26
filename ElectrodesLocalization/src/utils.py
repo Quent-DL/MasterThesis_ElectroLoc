@@ -54,17 +54,24 @@ def get_regression_line_parameters(
     )
 
 
-def distance_matrix(coords: np.ndarray) -> np.ndarray:
-    """Compute the distance matrix of an array of points.
+def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
+    """Compute the distance matrix between the points of an array, or between
+    the points of two arrays.
     
     ### Input:
-    - coords: an array of shape (N, K) that contains N K-dimensional points.
+    - a: an array of N K-dimensional points. Shape (N, K)
+    - b (optional): an array of M other K-dimensional points. Shape (M, K).
+    If specified, the matrix returned contains the distance between each pair
+    of points (p, q) such that 'p' belongs to 'a' and 'q' belongs to 'b'.
+    If None, 'b' is set to 'a' by default.
     
     ### Output:
-    - distance_matrix: an array of shape (N, N) such that 
-    distance_matrix[i, j] contains the euclidian distance between coords[i]
-    and coords[j]. By definition, 'distance_matrix' is symmetric."""
-    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    - distance_matrix: an array of shape (N, M) such that 
+    distance_matrix[i, j] contains the euclidian distance between a[i]
+    and b[j]. If a == b, then 'distance_matrix' is symmetric."""
+    if b is None:
+        b = a
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
     distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
     return distance_matrix
 
@@ -153,7 +160,7 @@ class LinearElectrodeModel(ElectrodeModel):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
             raise ValueError("Expected at least 2 samples to create model."
                              f"Got {len(samples)}.")
-        self.point, self.direction = get_regression_line_parameters(samples)
+        self.recompute(samples)
 
     def compute_dissimilarity(self, other) -> float:
         if type(other) != LinearElectrodeModel:
@@ -188,6 +195,7 @@ class LinearElectrodeModel(ElectrodeModel):
             # Ignore if not enough samples given
             return
         self.point, self.direction = get_regression_line_parameters(samples)
+        self.direction /= norm(self.direction)
 
     def merge(self, other, w_self: float, w_other: float) -> None:
         if type(other) != LinearElectrodeModel:
@@ -263,7 +271,7 @@ class OutputCSV:
         if (self.raw_contacts_path is None 
                 or not os.path.exists(self.raw_contacts_path)):
             return False
-        df = pd.read_csv(self.raw_contacts_path)
+        df = pd.read_csv(self.raw_contacts_path, comment="#")
         # TODO concatenate
         a = ('ct_vox_x' in df) 
         b = ('ct_vox_y' in df)
@@ -273,7 +281,7 @@ class OutputCSV:
 
     def load_raw_contacts(self) -> np.ndarray:
         """TODO write documentation"""
-        df = pd.read_csv(self.raw_contacts_path)
+        df = pd.read_csv(self.raw_contacts_path, comment="#")
         contacts_df = df[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']]
         return contacts_df.to_numpy(dtype=np.float32)
 

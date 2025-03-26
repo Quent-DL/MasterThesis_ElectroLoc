@@ -130,4 +130,10 @@ def compute_contacts_centers(
         log(f"Contact {i}/{n_contacts}", erase=True)
         contacts_com.append(__opti_center_of_mass(ct_grayscale, labels, i))
 
-    return np.stack(contacts_com, dtype=np.float32)
+    all_contacts = np.stack(contacts_com, dtype=np.float32)
+
+    # Sorting along arbitrary criterion to guarantee non-stochasting 
+    # ordering of the contacts
+    a = all_contacts[np.lexsort(keys=all_contacts.T)]
+    print(a.shape)
+    return a
