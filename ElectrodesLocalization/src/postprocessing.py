@@ -2,7 +2,9 @@ import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
 from typing import Tuple, List
-from utils import get_regression_line_parameters, distance_matrix, ElectrodeModel
+import utils
+from utils import ElectrodeModel
+from scipy.optimize import minimize
 
 
 def __sort_indices_by_contact_depth(
@@ -128,7 +130,8 @@ def  __reassign_labels_closest(
             continue
 
         # Computing the linear regression of that electrode
-        p_e, v_e = get_regression_line_parameters(points=contacts[labels==e_id])
+        p_e, v_e = utils.get_regression_line_parameters(
+            points=contacts[labels==e_id])
         # Computing distance between each contact and this regression
         # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
         # Shape (N,)
@@ -147,6 +150,7 @@ def  __reassign_labels_closest(
     return labels
     
 
+# TODO remove deprecated
 def __merge_similar_electrodes(
         contacts: np.ndarray, 
         labels: np.ndarray, 
@@ -161,7 +165,7 @@ def __merge_similar_electrodes(
             # Regress electrode-wise
             data = contacts[labels == l]    # shape (K, 3)  
             # Shapes (3,) and (3,)
-            inter, dir = get_regression_line_parameters(data)
+            inter, dir = utils.get_regression_line_parameters(data)
             inters.append(inter[1:])
             dirs.append(dir[1:])
         inters = np.stack(inters)    # Shape (K, 2)
@@ -173,7 +177,7 @@ def __merge_similar_electrodes(
         projs = np.concatenate([proj_min, proj_max], axis=1)    # Shape (K, 4)
 
         # Distance map
-        distance_map = distance_matrix(projs)
+        distance_map = utils.distance_matrix(projs)
         n = len(uniques)
         distance_map[range(n), range(n)] = distance_map.max()
 
@@ -204,7 +208,7 @@ def __estimate_intercontact_distance(
     - dist_std: the standard deviation of the distance between each contact
     and its closest neighbor."""
     # Distance matrix of the contacts. Shape (N, N)
-    distance_map = distance_matrix(contacts)
+    distance_map = utils.distance_matrix(contacts)
     # Ensuring that the closest detected neighbor of a contact isn't itself.
     distance_map[distance_map==0] = distance_map.max()
 
@@ -223,6 +227,66 @@ def __estimate_intercontact_distance(
         & (distances_neigh < bins[mode+2])].mean()
 
     return dist, distances_neigh.std()
+
+
+def __model_fit_loss(
+        t0: float, 
+        model: ElectrodeModel, 
+        contacts: np.ndarray, 
+        nb_points: int,
+        intercontact_dist: float,
+        gamma: int
+) -> float:
+    """TODO write documentation"""
+    # Shape (N, 3)
+    targets = model.get_sequence(nb_points, t0, intercontact_dist, gamma)
+    # Distance between each point of the sequence, and its closest neighbor
+    # among 'contacts'. Shape (nb_points, len(contacts)).
+    distances = utils.distance_matrix(targets, contacts).min(axis=1)
+    return np.sum(distances**2)
+
+
+def __model_fit_apply(
+        models: List[ElectrodeModel], 
+        contacts: np.ndarray, 
+        labels: np.ndarray,
+        nb_contacts: List[int],
+        intercontact_dist: float,
+) -> np.ndarray:
+    """TODO write documentation
+    - Assumes electrode-wise contacts sorted by decreasing depth
+    - Assumes values in 'labels' match with indices in 'nb_contacts'"""
+    new_contacts      = []
+    new_labels        = []
+    new_positions_ids = []
+
+    for k, model in enumerate(models):
+        model_contacts = contacts[labels == k]
+        gamma = model.get_gamma(model_contacts[0], model_contacts[-1])
+
+        # Defining loss function
+        loss = lambda t0: __model_fit_loss(
+            t0, model, model_contacts, nb_contacts[k], 
+            intercontact_dist, gamma)    
+        
+        # Defining t0 from which to start the search
+        init_t0 = model.get_projection_t(model_contacts[0])    # float
+        init_t0 = np.array([init_t0])    # Shape (1,) for scipy
+        
+        # Computing optimal t0* that locally minimizes loss
+        t0 = minimize(loss, init_t0)
+
+        # Getting sequence of points that starts at t0*
+        model_sequence = model.get_sequence(
+            nb_contacts[k], t0, intercontact_dist, gamma)
+        new_contacts.append(model_sequence)
+        new_labels.append(k * np.ones((nb_contacts[k],)))
+        new_positions_ids.append(np.arange(nb_contacts[k]))
+    
+    new_contacts      = np.concatenate(new_contacts)
+    new_labels        = np.concatenate(new_labels)
+    new_positions_ids = np.concatenate(new_positions_ids)
+    return new_contacts, new_labels, new_positions_ids
 
 
 def postprocess(
@@ -255,5 +319,12 @@ def postprocess(
     contacts      = contacts[order]
     labels        = labels[order]
     positions_ids = positions_ids[order]
+
+    # TODO Swapping labels ids to match nb of electrodes
+    # labels = __match_labels_(labels, entry_points, contacts)
+
+    # TODO uncomment: Mapping contacts to points along the model
+    #contacts, labels, positions_ids = __model_fit_apply(
+    #    models, contacts, labels, nb_contacts, intercontact_distance)
 
     return contacts, labels, positions_ids

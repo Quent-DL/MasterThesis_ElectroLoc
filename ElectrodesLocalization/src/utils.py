@@ -59,7 +59,7 @@ def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
     the points of two arrays.
     
     ### Input:
-    - a: an array of N K-dimensional points. Shape (N, K)
+    - a: an array of N K-dimensional points. Shape (N, K).
     - b (optional): an array of M other K-dimensional points. Shape (M, K).
     If specified, the matrix returned contains the distance between each pair
     of points (p, q) such that 'p' belongs to 'a' and 'q' belongs to 'b'.
@@ -77,7 +77,7 @@ def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
 
 
 class ElectrodeModel:
-    """An interface for modelling electrodes"""
+    """A curve model interface for describing generic a generic electrode."""
 
     # The minimum number of samples needed to compute the model parameters
     MIN_SAMPLES = 0
@@ -151,18 +151,85 @@ class ElectrodeModel:
         None"""
         raise NotImplementedError("Method not implemented by child class.")
     
+    def project(self, contacts: np.ndarray) -> np.ndarray:
+        """Projects a set of contacts onto the model. The projection of a
+        contact is the point on the model with the smallest euclidian distance
+        with that contact.
+
+        ### Input:
+        - contacts: the list of 3-dimensional points to project. Shape (3,) if
+        a single point is projected, or (N, 3) if N points are projected.
+
+        ### Output:
+        - proj: the projection of the point(s) onto the model. Same shape as
+        'contacts."""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def get_sequence(self, nb_points: int, t0: float, 
+                     distance: float, gamma: Literal[-1, 1]) -> np.ndarray:
+        """Generates a sequence of evenly-spaced points along the model.
+        
+        ### Inputs:
+        - nb_points: the number of points to generate.
+        - t0: the time parameter to start the sequence at. Reminder: since the
+        model describes a curve, then the spatial coordinates (x, y, z) along
+        the model can be parametrized as a function of a time t.
+        - distance: the distance between each point. The term "distance" can
+        either refer to the direct euclidian distance between two points,
+        or the distance *along the model* between the points. It is left to
+        the children class to decide which is implemented.
+        - gamma: the direction to follow from t0 to compute the sequence.
+        A positive gamma starts at t0 and goes towards positive t, whereas
+        a negative gamma goes towards negative t.
+        
+        ### Output:
+        - sequence: the sequence of 'nb_points' evenly-spaced by 'distance'
+        along the model. Shape (nb_points, 3)."""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def get_gamma(self, a: np.ndarray, b: np.ndarray) -> int:
+        """Returns whether the vector from a to b goes towards positive or
+        negative values of t for this model.
+        
+        ### Inputs:
+        - a: the origin of the vector. Shape (3,).
+        - b: the destination of the vector. Shape (3,).
+        
+        ### Output:
+        - gamma: whether the vecteur 'b-a' points towards positive (gamma = 1) 
+        or negative (gamma = -1) values of t on the model."""
+        raise NotImplementedError("Method not implemented by child class.")
+
+    def get_projection_t(self, a: np.ndarray) -> float:
+        """Computes the value of curve parameter t to describe the projection
+        of a point onto the model. In other words, returns t such that
+        project(a) = X(t), where X(t) is the curve model and
+        project(a) is the projection of a onto this model. 
+        
+        ### Inputs
+        - a: the point(s) to project and compute the equivalent t of. 
+        Shape (3,) for a single point, or (N, 3) for N points.
+        
+        ### Output:
+        - t: the parameter(s) that match the given a. Parameter t is a float
+        if a has shape (3,), or t is an array with shape (N,) if a has shape
+        (N, 3).
+        """
+        raise NotImplementedError("Method not implemented by child class.")
+
+
 
 class LinearElectrodeModel(ElectrodeModel):
     """A linear model for straight electrodes"""
     MIN_SAMPLES = 2
 
-    def __init__(self, samples: np.ndarray):
+    def __init__(self, samples):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
             raise ValueError("Expected at least 2 samples to create model."
                              f"Got {len(samples)}.")
         self.recompute(samples)
 
-    def compute_dissimilarity(self, other) -> float:
+    def compute_dissimilarity(self, other):
         if type(other) != LinearElectrodeModel:
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
@@ -185,22 +252,32 @@ class LinearElectrodeModel(ElectrodeModel):
         # Second term used to give score 0 to identical models
         return (1 + dist_points) / (0.01 + cos_angle) - 1/(0.01+1)
 
-    def compute_distance(self, contacts: np.ndarray) -> np.ndarray:
+    def compute_distance(self, contacts):
         p, v = self.point, self.direction
         # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
         return norm(np.cross(v, p-contacts), axis=1) / norm(v)
     
-    def recompute(self, samples: np.ndarray) -> None:
+    def recompute(self, samples):
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
             return
+        
         self.point, self.direction = get_regression_line_parameters(samples)
+
+        # Setting the passage point close to the center of the samples
+        self.point = self.project(samples.mean(axis=0))
+        # Imposing unit directional vector
         self.direction /= norm(self.direction)
 
-    def merge(self, other, w_self: float, w_other: float) -> None:
+
+    def merge(self, other, w_self, w_other):
         if type(other) != LinearElectrodeModel:
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
+        
+        # Giving equal weights if both are zero:
+        if (w_self + w_other == 0):
+            w_self, w_other = 1, 1
         
         # Renaming for shorter formulas
         p_a, v_a = self.point, self.direction
@@ -209,6 +286,38 @@ class LinearElectrodeModel(ElectrodeModel):
 
         self.point     = (p_a*w_a + p_b*w_b) / (w_a + w_b)
         self.direction = (v_a*w_a + v_b*w_b) / (w_a + w_b)
+
+    def project(self, contacts):
+        # For shorter formulas
+        p, v = self.point, self.direction
+        if len(contacts.shape) == 1:
+            # Contacts of shape (3,)
+            return p + np.dot(contacts-p, v) / np.dot(v, v) * v
+        else:
+            # Contacts of shape (N, 3)
+            dots = np.dot(contacts-p, v).reshape((len(contacts), 1))
+            v_repeated = np.tile(v, (len(contacts), 1))
+            return p + dots / np.dot(v, v) * v_repeated
+
+    def get_sequence(self, nb_points, t0, distance, gamma):
+        offsets = distance * np.arange(nb_points).reshape((nb_points, 1))
+        return self.point + self.direction * (t0 + np.sign(gamma)*offsets)
+
+    def get_gamma(self, a, b):
+        return np.sign(b-a, self.direction)
+
+    def get_projection_t(self, a):
+        # proj(a)[j] = self.point[j] + t * self.direction[j]
+        # choose j such that self.direction[j] is not close to 0 
+        # (to avoid zero division-)
+        proj = self.project(a)
+        j = np.argmax(np.abs(self.direction))
+        if len(a.shape) == 1:
+            # 'a' and 'proj' have shape (3,)
+            return (proj - self.point)[j] / self.direction[j]
+        else:
+            # 'a' and 'proj' have shape (N, 3)
+            return (proj[:,j] - self.point[j]) / self.direction[j]
 
 
 class NibCTWrapper:
@@ -256,7 +365,6 @@ class NibCTWrapper:
             hmg_coords = np.append(coords, 1).reshape((4,1))   # Shape(4, 1)
             # Getting rid of homogeneous 1 + reshaping to (3,)
             return (A @ hmg_coords)[:3].reshape((3,))
-
 
 
 class OutputCSV:

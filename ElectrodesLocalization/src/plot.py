@@ -6,6 +6,8 @@ import pyvista as pv
 import random as random
 import numpy as np
 import matplotlib.pyplot as plt
+from utils import LinearElectrodeModel
+from typing import List
 
 __COLOR_PALETTE = [
     
@@ -52,6 +54,25 @@ def __get_color(i: int) -> tuple:
     return color 
 
 
+def plot_contacts(
+    contacts: np.ndarray, 
+    plotter: pv.Plotter=None
+) -> pv.Plotter:
+    """TODO write documentation"""
+    if plotter is None:
+        plotter = pv.Plotter()
+
+    point_cloud = pv.PolyData(contacts)
+    plotter.add_points(
+        point_cloud, point_size=5.0, 
+        render_points_as_spheres=True)
+    
+    mean = contacts.mean(axis=0)
+    plotter.camera.focal_point = mean
+
+    return plotter
+
+
 def plot_colored_electrodes(
     contacts: np.ndarray,
     labels: np.ndarray,
@@ -63,12 +84,12 @@ def plot_colored_electrodes(
         plotter = pv.Plotter()
 
     # Iterate over each electrode and add its contacts to the plotter
-    for i, e_id in enumerate(np.unique(labels)):
-        color = __get_color(i)
+    for k, e_id in enumerate(np.unique(labels)):
+        color = __get_color(k)
 
         point_cloud = pv.PolyData(contacts[labels == e_id])
         plotter.add_points(
-            point_cloud, color=color, point_size=15.0, 
+            point_cloud, color=color, point_size=8, 
             render_points_as_spheres=True)
     
     # Centers the camera around the center of electrodes
@@ -143,3 +164,21 @@ def plot_plane(center, direction, plotter: pv.Plotter):
     plane = pv.Plane(center, direction, i_size=150, j_size=150)
     plotter.add_mesh(plane, opacity=0.75)
     return plotter
+
+
+def plot_linear_electrodes(
+        models: List[LinearElectrodeModel], 
+        func_world2vox,
+        plotter: pv.Plotter
+) -> pv.plotter:
+    if plotter is None:
+        plotter = pv.Plotter()
+
+    for k, model in enumerate(models):
+        color = __get_color(k)
+        a = func_world2vox(model.point - 50 * model.direction)
+        b = func_world2vox(model.point + 50 * model.direction)
+        line = pv.Line(a, b)
+        plotter.add_mesh(line, color=color, line_width=3)
+    return plotter
+    

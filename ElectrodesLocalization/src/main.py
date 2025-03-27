@@ -66,6 +66,7 @@ def main():
     ct_center_physical = ct_object.apply_affine(
         coords=np.array(ct_object.ct.shape)/2, 
         mode='forward')
+    old_contacts = contacts        # Saved for plotting purposes
     contacts, labels, contacts_ids = postprocessing.postprocess(
         contacts, labels, ct_center_physical, models)
     
@@ -84,10 +85,14 @@ def main():
     log("Plotting results")
     pv_plotter = None
     # TODO uncomment
-    pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
+    #pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
     #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
+    #pv_plotter = plot.plot_contacts(old_contacts, pv_plotter)
     pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
-    # TODO also plot models
+    pv_plotter = plot.plot_linear_electrodes(
+        models, 
+        lambda p: ct_object.apply_affine(p, 'inverse'), 
+        pv_plotter)
 
     pv_plotter.add_axes()
     pv_plotter.show()

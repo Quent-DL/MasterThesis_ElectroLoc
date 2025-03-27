@@ -174,7 +174,7 @@ def __reduce_models(
     # (to avoid concurrent modification between modif and iteration)
     n_models = len(models)
     for k in range(n_models-1, -1, -1):
-        if np.sum(labels==k) < min_inliers:
+        if np.sum(labels==k) < min_inliers and len(models) > n_electrodes:
             del models[k]
 
     ### Merging similar models
@@ -205,13 +205,13 @@ def segment_electrodes(
     """TODO write documentation"""
 
     # TODO tweak hyperparams
-    n_init_models = 10 * n_electrodes
+    model_cls = LinearElectrodeModel
+    n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     lambda_weight = 1
-    min_inliers = 2
+    min_inliers = model_cls.MIN_SAMPLES + 1
     max_init = 1000
     energy_tol = 1e-6
     neighborhood_regul_c = 2.0
-    model_cls = LinearElectrodeModel
 
     neighborhood_matrix = __compute_neighborhood_matrix(
         contacts, model_cls, neighborhood_regul_c)
