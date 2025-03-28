@@ -106,15 +106,15 @@ class ElectrodeModel:
         another, while a value equal to zero means they are identical."""
         raise NotImplementedError("Method not implemented by child class.")
 
-    def compute_distance(self, contacts: np.ndarray) -> np.ndarray:
-        """Computes the euclidian distance between this model and each of the
-        given contacts.
+    def compute_distance(self, points: np.ndarray) -> np.ndarray:
+        """Computes the euclidian distance between this model and the
+        given points.
         
         ### Input:
-        - contacts: the 3D coordinates of the N points. Shape (N, 3).
+        - points: the 3D coordinates of the N points. Shape (N, 3).
         
         ### Output:
-        - distance: the euclidian distance between each contact and its
+        - distance: the euclidian distance between each point and its
         closest projection onto the model. Shape (N,)."""
         raise NotImplementedError("Method not implemented by child class.")
 
@@ -218,7 +218,6 @@ class ElectrodeModel:
         raise NotImplementedError("Method not implemented by child class.")
 
 
-
 class LinearElectrodeModel(ElectrodeModel):
     """A linear model for straight electrodes"""
     MIN_SAMPLES = 2
@@ -252,10 +251,10 @@ class LinearElectrodeModel(ElectrodeModel):
         # Second term used to give score 0 to identical models
         return (1 + dist_points) / (0.01 + cos_angle) - 1/(0.01+1)
 
-    def compute_distance(self, contacts):
+    def compute_distance(self, points):
         p, v = self.point, self.direction
         # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
-        return norm(np.cross(v, p-contacts), axis=1) / norm(v)
+        return norm(np.cross(v, p-points), axis=1) / norm(v)
     
     def recompute(self, samples):
         if len(samples) < self.MIN_SAMPLES:
@@ -304,7 +303,7 @@ class LinearElectrodeModel(ElectrodeModel):
         return self.point + self.direction * (t0 + np.sign(gamma)*offsets)
 
     def get_gamma(self, a, b):
-        return np.sign(b-a, self.direction)
+        return np.sign(np.dot(b-a, self.direction))
 
     def get_projection_t(self, a):
         # proj(a)[j] = self.point[j] + t * self.direction[j]
@@ -338,7 +337,7 @@ class NibCTWrapper:
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
 
-    def apply_affine(
+    def __apply_affine(
             self,
             coords: np.ndarray, 
             mode: Literal['forward', 'inverse']
@@ -365,6 +364,14 @@ class NibCTWrapper:
             hmg_coords = np.append(coords, 1).reshape((4,1))   # Shape(4, 1)
             # Getting rid of homogeneous 1 + reshaping to (3,)
             return (A @ hmg_coords)[:3].reshape((3,))
+        
+    def convert_vox_to_world(self, vox_coords: np.ndarray) -> np.ndarray:
+        """TODO write documentation. Input shape (3,) or (N, 3)"""
+        return self.__apply_affine(vox_coords, 'forward')
+    
+    def convert_world_to_vox(self, vox_coords: np.ndarray) -> np.ndarray:
+        """TODO write documentation. Input shape (3,) or (N, 3)"""
+        return self.__apply_affine(vox_coords, 'inverse')
 
 
 class OutputCSV:
@@ -434,3 +441,24 @@ class OutputCSV:
             index=False,
             float_format=lambda f: round(f, 3))
         return df
+
+
+class ElectrodesInfo:
+    def __init__(self, path):
+        """Initialize an instance from the information in the given CSV file.
+        The CSV file must contain the following column names:
+        - 'ct_vox_x','ct_vox_y','ct_vox_z': the voxel coordinates of the
+        entry points of each electrode.
+        - 'nb_contacts': number of contacts on each electrode
+            
+        ### Input:
+        - path: the path to the CSV file"""
+        df = pd.read_csv(path, comment='#')
+
+        # Number of electrodes. Int.
+        self.nb_electrodes = len(df)
+        # Entry points. Shape (NB_ELECTRODES, 3)
+        coords_columns = ['ct_vox_x','ct_vox_y','ct_vox_z']
+        self.entry_points = df[coords_columns].to_numpy(dtype=np.float32)
+        # Number of contacts. Shape (NB_ELECTRODES,)
+        self.nb_contacts = df['nb_contacts'].to_numpy(dtype=int)

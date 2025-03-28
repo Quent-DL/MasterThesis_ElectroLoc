@@ -3,7 +3,7 @@ from numpy.linalg import norm
 from sklearn.decomposition import PCA
 from typing import Tuple, List
 import utils
-from utils import ElectrodeModel
+from utils import ElectrodeModel, ElectrodesInfo
 from scipy.optimize import minimize
 
 
@@ -226,7 +226,44 @@ def __estimate_intercontact_distance(
         (bins[mode-1] < distances_neigh) 
         & (distances_neigh < bins[mode+2])].mean()
 
-    return dist, distances_neigh.std()
+    return dist #, distances_neigh.std() TODO remove if useless
+
+def __match_labels(
+        entry_points: np.ndarray,
+        old_models: List[ElectrodeModel],
+        old_labels: np.ndarray
+) -> np.ndarray:
+    """TODO write documentation
+    - len(models) == entry_points.shape[0] == len(old_labels)"""
+    # Distances between each model and each entry point
+    distances = []
+    for k, model in enumerate(old_models):
+        distances.append(model.compute_distance(entry_points))
+
+    # Shape (n_models, n_entry_points)   (should normally be squared)
+    distances = np.stack(distances)
+
+    # The new labels such that, if model[i] matches entry_poins[j],
+    # then i = convert_to_old[j]
+    # TODO use other system to ensure double bijection between old and new labels
+    convert_to_old = distances.argmin(axis=0)
+
+
+    # Updating list of models
+    # Source: https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
+
+    # Updating labels
+    new_labels = -1 * np.ones_like(old_labels)    # -1 is a placeholder
+    new_models = []
+    for j, i in enumerate(convert_to_old):
+        # i is an old label, which must be replaced by j
+        new_models.append(old_models[i])
+        new_labels[old_labels == i] = j
+    
+    # TODO Debug, replace by handling the case and forcing the mapping to be bijective
+    assert not -1 in new_labels, "Not all old labels have been updated"
+
+    return new_models, new_labels
 
 
 def __model_fit_loss(
@@ -274,7 +311,19 @@ def __model_fit_apply(
         init_t0 = np.array([init_t0])    # Shape (1,) for scipy
         
         # Computing optimal t0* that locally minimizes loss
-        t0 = minimize(loss, init_t0)
+        optimize_res = minimize(loss, init_t0)
+        if not optimize_res.success:
+            print("Warning: Could not optimize model k."
+                  "Using non-projected contacts instead.\n"
+                  f"Reason: {optimize_res.message}\n")
+            # Using old, unprojected contacts instead of a projected and
+            # equidistant version
+            new_contacts.append(model_contacts)
+            new_labels.append(k * np.ones((len(model_contacts),)))
+            new_positions_ids.append(np.arange(len(model_contacts)))
+            continue
+        
+        t0: float = optimize_res.x[0]    
 
         # Getting sequence of points that starts at t0*
         model_sequence = model.get_sequence(
@@ -294,6 +343,7 @@ def postprocess(
         labels: np.ndarray,
         ct_center: np.ndarray,
         models: List[ElectrodeModel],
+        elec_info: ElectrodesInfo,
         intercontact_distance: float=None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """TODO write documentation"""
@@ -320,11 +370,11 @@ def postprocess(
     labels        = labels[order]
     positions_ids = positions_ids[order]
 
-    # TODO Swapping labels ids to match nb of electrodes
-    # labels = __match_labels_(labels, entry_points, contacts)
+    # Swapping labels ids to match nb of electrodes
+    models, labels = __match_labels(elec_info.entry_points, models, labels)
 
     # TODO uncomment: Mapping contacts to points along the model
-    #contacts, labels, positions_ids = __model_fit_apply(
-    #    models, contacts, labels, nb_contacts, intercontact_distance)
+    contacts, labels, positions_ids = __model_fit_apply(
+        models, contacts, labels, elec_info.nb_contacts, intercontact_distance)
 
-    return contacts, labels, positions_ids
+    return contacts, labels, positions_ids, models
