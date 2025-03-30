@@ -83,7 +83,7 @@ def main():
         ct_object.convert_vox_to_world
     )
 
-    # Plotting results in physical space
+    # Plotting results in voxel space
     log("Plotting results")
     plotter = plot.ElectrodePlotter(ct_object.convert_world_to_vox)
     plotter.update_focal_point(contacts.mean(axis=0))
