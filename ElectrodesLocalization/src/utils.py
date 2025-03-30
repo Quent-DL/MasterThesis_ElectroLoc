@@ -3,7 +3,7 @@ from numpy import cross
 from numpy.linalg import norm
 import nibabel as nib
 from datetime import datetime
-from typing import Literal, Tuple
+from typing import Literal, Tuple, Optional
 import pandas as pd
 import os
 from sklearn.linear_model import LinearRegression
@@ -340,7 +340,8 @@ class NibCTWrapper:
     def __apply_affine(
             self,
             coords: np.ndarray, 
-            mode: Literal['forward', 'inverse']
+            mode: Optional[Literal['forward', 'inverse']] = "forward",
+            apply_translation: Optional[bool] = True
     ) -> np.ndarray:
         """TODO write documentation
         
@@ -349,6 +350,8 @@ class NibCTWrapper:
 
         # The homogenous transform matrix, shape (4, 4)
         A = self.affine if mode=="forward" else np.linalg.inv(self.affine)
+        if not apply_translation:
+            A[:3,3] = 0    # removing translation coefficients
 
         if len(coords.shape) == 2:
             # Corods of shape (N, 3)
@@ -365,13 +368,21 @@ class NibCTWrapper:
             # Getting rid of homogeneous 1 + reshaping to (3,)
             return (A @ hmg_coords)[:3].reshape((3,))
         
-    def convert_vox_to_world(self, vox_coords: np.ndarray) -> np.ndarray:
+    def convert_vox_to_world(
+            self, 
+            vox_coords: np.ndarray,
+            apply_translation: Optional[bool] = True
+    ) -> np.ndarray:
         """TODO write documentation. Input shape (3,) or (N, 3)"""
-        return self.__apply_affine(vox_coords, 'forward')
+        return self.__apply_affine(vox_coords, 'forward', apply_translation)
     
-    def convert_world_to_vox(self, vox_coords: np.ndarray) -> np.ndarray:
+    def convert_world_to_vox(
+            self, 
+            vox_coords: np.ndarray,
+            apply_translation: Optional[bool] = True
+    ) -> np.ndarray:
         """TODO write documentation. Input shape (3,) or (N, 3)"""
-        return self.__apply_affine(vox_coords, 'inverse')
+        return self.__apply_affine(vox_coords, 'inverse', apply_translation)
 
 
 class OutputCSV:

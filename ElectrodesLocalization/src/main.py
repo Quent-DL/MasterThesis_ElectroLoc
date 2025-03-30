@@ -83,27 +83,15 @@ def main():
         ct_object.convert_vox_to_world
     )
 
-    # Converting contacts back to voxel coordinates
-    contacts = ct_object.convert_world_to_vox(contacts)
-    electrodes_info.entry_points = ct_object.convert_world_to_vox(
-        electrodes_info.entry_points)
-
-    # Plotting results
+    # Plotting results in physical space
     log("Plotting results")
-    pv_plotter = None
-    # TODO uncomment
-    pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
-    #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
-    #pv_plotter = plot.plot_contacts(old_contacts, pv_plotter)
-    #pv_plotter = plot.plot_contacts(electrodes_info.entry_points, pv_plotter)
-    pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
-    pv_plotter = plot.plot_linear_electrodes(
-        models, 
-        ct_object.convert_world_to_vox, 
-        pv_plotter)
-
-    pv_plotter.add_axes()
-    pv_plotter.show()
+    plotter = plot.ElectrodePlotter(ct_object.convert_world_to_vox)
+    plotter.update_focal_point(contacts.mean(axis=0))
+    plotter.plot_ct(ct_object.ct)
+    plotter.plot_ct_electrodes(ct_object.mask)
+    plotter.plot_linear_electrodes(models)
+    plotter.plot_colored_contacts(contacts, labels)
+    plotter.show()
 
     # Saving results to CSV file
     log("Saving results to CSV file")
