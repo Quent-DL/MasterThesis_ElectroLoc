@@ -11,24 +11,14 @@ from typing import List, Callable, Optional, Tuple
 
 __COLOR_PALETTE = [
     
-    (0, 0, 0),
-    (0, 0, 255),
-    (255, 150, 0),
-    (0, 255, 255),
-    (255, 0, 0),
-    (255, 0, 255),
-    (255, 255, 0),
-    (255, 230, 180),
-
-
-    (63, 0, 0),        # very dark red
-    (142, 202, 230),   # cyan
-    (78, 78, 255),     # blue
-    (255, 255, 0),     # yellow
-    (220, 220, 220),   # white
-    (251, 150, 0),     # orange
+    (128, 128, 0),     # ???
+    (0, 0, 255),       # blue
+    (255, 150, 0),     # orange
+    (0, 255, 255),     # cyan
     (255, 0, 0),       # red
-    (253, 230, 180),   # cream
+    (255, 0, 255),     # purple
+    (255, 255, 0),     # yellow
+    (255, 230, 180),   # cream
 
     (120, 0, 0),       # dark pink
     (236, 78, 32),     # flame
@@ -81,9 +71,9 @@ class ElectrodePlotter:
             color: Optional[Tuple[int]] = None,
             size_multiplier: Optional[float] = 1) -> None:
         """TODO write documentation"""
-        point_cloud = pv.PolyData(contacts)
+        point_cloud = pv.PolyData(self.func_world2vox(contacts))
         self.plotter.add_points(
-            self.func_world2vox(point_cloud), 
+            point_cloud, 
             point_size=5.0*size_multiplier, 
             color=color,
             render_points_as_spheres=True)
@@ -131,3 +121,8 @@ class ElectrodePlotter:
             line = pv.Line(a, b)
             self.plotter.add_mesh(line, color=color, line_width=3)
 
+    def plot_matches(self, matched_DT, matched_GT) -> None:
+        """TODO write documentation"""
+        for dt, gt in zip(matched_DT, matched_GT):
+            line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
+            self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)

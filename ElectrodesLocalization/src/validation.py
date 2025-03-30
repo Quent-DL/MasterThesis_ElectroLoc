@@ -5,90 +5,90 @@ from utils import distance_matrix
 
 import numpy as np
 import pandas as pd
-from typing import Callable
+from typing import Callable, Optional
+
+def get_ground_truth(
+        csv_path: str,
+        transform_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+) -> np.ndarray:
+    """Returns the ground truth in the given CSV file. The file must contain
+    columns 'ct_vox_x', 'ct_vox_y', 'ct_vox_z'.
+    
+    ### Inputs:
+    - csv_path: the path to the CSV file. The file can contain comments
+    that start with the character '#'.
+    - transform_func: the transformation applied to each contact in the ground
+    truth (e.g. a function that apply the affine transform from voxel space
+    to physical space). Both input and outputs must be arrays of shape (N, 3).
+    
+    ### Output:
+    - ground_truth: the coordinates of the contacts in the CSV.""" 
+    # Extracting numpy array from CSV
+    df_GT = pd.read_csv(csv_path, comment="#")
+    ground_truth = df_GT[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']].to_numpy(
+        dtype=np.float32)
+    if transform_func is not None:
+        ground_truth = transform_func(ground_truth)
+    return ground_truth
 
 
-def __validate_contacts_position(
+def validate_contacts_position(
         detected_contacts: np.ndarray, 
         ground_truth: np.ndarray,
-        transform_gt: Callable[[np.ndarray], np.ndarray]=None
+        max_match_dist: float
 ) -> str:
     """TODO write documentation
-    In: matrices of shape (N, 3) and (M, 3)
-    transform_gt is a mapping function to re-express ground_truth coordinates
-    into detected_contacts coordinates space
+    In: matrices of shape (N, 3) and (M, 3) in same coordinates space
     Out: None"""
-    if transform_gt:
-        # Expressing ground truth in same coordinates space as detected contacts
-        ground_truth = transform_gt(ground_truth)
+    # Notation:
+    # - dt: one single detected contact
+    # - gt: one single ground truth contact
+    # - DT: set of several (or all) dt's
+    # - GT: set of several (or all) gt's
 
-    distances_global = distance_matrix(detected_contacts, ground_truth)
+    # Shape (len(detected_contacts), len(ground_truth))
+    distances = distance_matrix(detected_contacts, ground_truth)
 
-    # indices of the matched and single contacts (both DT or GT)
-    matched_DT = []
-    matched_GT = []
-    single_DT  = np.arange(len(detected_contacts))
-    single_GT  = np.arange(len(ground_truth))
+    # Flag for each index to indicate if valid.
+    # Initially, valid == dt and gt are close enough
+    valid = distances < 0.5 * max_match_dist 
 
-    iter_nb = 0
-    keep_looping = True
+    # Indices of the matched dt's and gt's
+    matched_dt_idx = []
+    matched_gt_idx = []
 
-    # Keep looping as long as matches are found
-    while keep_looping:
-        # Compute mean and std of current matches
-        if iter_nb != 0:
-            matched_distances = distances_global[np.array(matched_DT), np.array(matched_GT)]
-            mtch_mean = matched_distances.mean()
-            mtch_std = matched_distances.std()
-
-        # Compute distance matrix between non-matched (= single) contacts
-        distances_singles = distances_global[np.ix_(
-            np.array(single_DT), np.array(single_GT))]
-        closest_GT_to_DT = distances_singles.argmin(axis=1)
-        closest_DT_to_GT = distances_singles.argmin(axis=0)
-
-        # -- First round of matches --
-        # Finding mutual matches between the still-single DT and GT
-        # A match happens when two single dt and gt 
-        # are mutually closest to each other AND within reasonable distance
-        keep_looping = False
-        for single_idx, global_idx in enumerate(single_GT):
-            if closest_GT_to_DT[closest_DT_to_GT[single_idx]] == single_idx:
-                # dt and gt mutually closest among single contacts
-                if iter_nb == 0 or distances_singles[closest_DT_to_GT[single_idx], single_idx] < mtch_mean + 5*mtch_std:
-                    # dt and gt are within reasonable distance
-                    matched_GT.append(global_idx)
-                    matched_DT.append(single_DT[closest_DT_to_GT[single_idx]])
-                    keep_looping = True
-
-        # Updating list of contacts (gt and dt) that are still single
-        single_GT = set(range(len(ground_truth))).difference(matched_GT)
-        single_GT = np.array(list(single_GT))
-
-        single_DT = set(range(len(detected_contacts))).difference(matched_DT)
-        single_DT = np.array(list(single_GT))
-
-        iter_nb += 1
+    # Sorting indices by increasing distance, expressed in ravel format
+    indices = distances.flatten().argsort()
     
-    # Finding missing contacts (False Negative)
+    for i in indices:
+        dt, gt = np.unravel_index(i, distances.shape)
+        if valid[dt, gt]:
+            # (dt, gt) is valid and of closest distance => match
+            matched_dt_idx.append(dt)
+            matched_gt_idx.append(gt)
+            # Invalidating row dt and column gt, because each contact can
+            # only match once
+            valid[dt,:] = False
+            valid[:,gt] = False
+    
+    # Finding missing contacts (= holes) (False Negative)
     # A missing contact happens when a gt is not matched to any dt
-    missing = set(range(len(ground_truth))).difference(matched_GT)
+    holes_gt_idx = np.setdiff1d(np.arange(len(ground_truth)), matched_gt_idx)
 
     # Finding excess contacts (False Positive)
-    # An excess contact happens when, for a dt, 
-    # its closest gt is already matched
-    excess = set(range(len(detected_contacts))).difference(matched_DT)
+    # An excess contact happens when a dt is not matchd to any gt
+    excess_dt_idx = np.setdiff1d(np.arange(len(detected_contacts)), matched_dt_idx)
 
-    # Computing the distance between the actually matched contacts (= relevant)
-    rlvt_distances = distances_global[np.array(matched_DT), np.array(matched_GT)]
+    # Computing the distance between the matched (= relevant) contacts
+    rlvt_distances = distances[np.array(matched_dt_idx), np.array(matched_gt_idx)]
 
     stat_prints = ("\n"
         "==================================================\n"
         "STATISTICAL RESULTS\n"
         "----------------[ CONTACTS ]----------------------\n"
         f"Contacts found: {len(detected_contacts)}"
-        f"    ({len(matched_DT)} matched, {len(excess)} excess)\n"
-        f"Missing       : {len(missing)}\n"
+        f"    ({len(matched_dt_idx)} matched, {len(excess_dt_idx)} in excess)\n"
+        f"Missing       : {len(holes_gt_idx)}\n"
         "\n"
         "-------------[ DISTANCE ERROR ]-------------------\n"
         f"Mean: {rlvt_distances.mean():<9.3f}    "
@@ -100,27 +100,5 @@ def __validate_contacts_position(
         "\n"
         "==================================================\n")
     
-    return matched_DT, matched_GT, excess, missing, stat_prints
-
-
-def validate_contacts_position_from_file(
-        detected_contacts: np.ndarray, 
-        ground_truth_filepath: str,
-        transform_gt: Callable[[np.ndarray], np.ndarray]=None
-) -> str:
-    
-    """TODO write documentation
-    In: matrices of shape (N, 3), a path
-    transform_gt is a mapping function to re-express ground_truth coordinates
-    into detected_contacts coordinates space
-    Out: None"""
-    # Extracting numpy array from CSV
-    df_GT = pd.read_csv(ground_truth_filepath, comment="#")
-    ground_truth = df_GT[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']].to_numpy(
-        dtype=np.float32)
-    
-    return __validate_contacts_position(
-        detected_contacts, 
-        ground_truth,
-        transform_gt)
-
+    return (matched_dt_idx, matched_gt_idx, excess_dt_idx, 
+            holes_gt_idx, stat_prints)

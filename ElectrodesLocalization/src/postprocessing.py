@@ -221,10 +221,12 @@ def __estimate_intercontact_distance(
     hist, _ = np.histogram(distances_neigh, bins)
     mode = hist.argmax()    # index of the modal bin
 
-    # Applying mean to modal bin and neighboring bins
+    # Applying mean to modal bin and neighboring bins (IF not on border)
+    bin_min = max(0, mode-1)
+    bin_max = min(len(bins)-1, mode+2)
     dist = distances_neigh[
-        (bins[mode-1] < distances_neigh) 
-        & (distances_neigh < bins[mode+2])].mean()
+        (bins[bin_min] < distances_neigh) 
+        & (distances_neigh < bins[bin_max])].mean()
 
     return dist #, distances_neigh.std() TODO remove if useless
 
