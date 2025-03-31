@@ -6,7 +6,7 @@ import pyvista as pv
 import random as random
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import LinearElectrodeModel
+from electrode_models import LinearElectrodeModel
 from typing import List, Callable, Optional, Tuple
 
 __COLOR_PALETTE = [

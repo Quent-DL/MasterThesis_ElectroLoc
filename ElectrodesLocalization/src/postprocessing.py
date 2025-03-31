@@ -1,9 +1,11 @@
+import utils
+from utils import ElectrodesInfo
+from electrode_models import ElectrodeModel
+
 import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
 from typing import Tuple, List
-import utils
-from utils import ElectrodeModel, ElectrodesInfo
 from scipy.optimize import minimize
 
 

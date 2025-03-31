@@ -1,6 +1,6 @@
 # Ref: DOI - 10.1007/s11263-011-0474-7
 
-from utils import ElectrodeModel, LinearElectrodeModel
+from electrode_models import ElectrodeModel, LinearElectrodeModel
 
 import numpy as np
 from numpy import cross
@@ -101,7 +101,7 @@ def __random_models_sampling(
     return models
 
 
-def __compute__points_models_distances(
+def __compute_points_models_distances(
         contacts: np.ndarray,
         models: List[ElectrodeModel]
 ) -> np.ndarray:
@@ -132,7 +132,7 @@ def __compute_labels_and_energy(
     # TODO add outlier system with params = (cost, threshold)
 
     # Shape (N, K)
-    distances = __compute__points_models_distances(contacts, models)
+    distances = __compute_points_models_distances(contacts, models)
     labels = distances.argmin(axis=1)    # Shape (N,)
     # Sum of distances between each contact and its closest model
     model_cost = distances.min(axis=1).sum()
