@@ -1,9 +1,13 @@
 # Local modules
-from utils import NibCTWrapper, OutputCSV, log
+import utils
+from utils import log
 import contacts_isolation
-import segmentation
+import segmentation_multimodel
 import postprocessing
+import validation
 import plot
+
+from electrode_models import LinearElectrodeModel, ParabolaElectrodeModel
 
 # External modules
 import os
@@ -18,26 +22,32 @@ def main():
     ELECTRODE_THRESHOLD = 2500
     N_ELECTRODES = (8 if not DEBUG_USE_SYNTH else 5)
 
-    # Inputs
-    data_dir          = "D:\\QTFE_local\\Python\\ElectrodesLocalization\\"\
-        f"data\\{path_suffix}"
+    ### Inputs
+    # Inputs for algorithm
+    data_dir          = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+                         f"data\\{path_suffix}")
     ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
     ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
     contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
+    elec_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
     output_path       = os.path.join(data_dir, "out\\electrodes.csv")
+    # Inputs for validation
+    ground_truth_path = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+                        f"data_ground_truths\\{path_suffix}\\ground_truth.csv")
 
-    # Loading the data
+    ### Loading the data
     log("Loading data")
-    ct_object = NibCTWrapper(ct_path, ct_brainmask_path)
+    ct_object = utils.NibCTWrapper(ct_path, ct_brainmask_path)
+    electrodes_info = utils.ElectrodesInfo(elec_info_path)
 
-    # Preparing the object to store and save the output
-    output_csv = OutputCSV(output_path, raw_contacts_path=contacts_path)
+    ### Preparing the object to store and save the output
+    output_csv = utils.OutputCSV(output_path, raw_contacts_path=contacts_path)
 
-    # Preprocessing
+    ### Preprocessing
     log ("Preprocessing data")
     ct_object.mask &= (ct_object.ct > ELECTRODE_THRESHOLD)
     
-    # Fetching approximate contacts
+    ### Fetching approximate contacts
     log("Extracting contacts coordinates")
     if output_csv.are_raw_contacts_available():
         contacts = output_csv.load_raw_contacts()
@@ -47,51 +57,64 @@ def main():
                 ct_mask=ct_object.mask, 
                 struct=contacts_isolation.__get_structuring_element('cross')
         )
-        # Caching the 
+        # Caching the results
         output_csv.save_raw_contacts(contacts)
     
-    # Converting contacts to physical coordinates
-    contacts = ct_object.apply_affine(contacts, 'forward')
+    ### Converting contacts to physical coordinates
+    contacts = ct_object.convert_vox_to_world(contacts)
+    electrodes_info.entry_points = ct_object.convert_vox_to_world(
+        electrodes_info.entry_points)
+    ct_center_world = ct_object.convert_vox_to_world(
+        np.array(ct_object.ct.shape)/2)
 
-    # Segmenting contacts into electrodes
+    ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels = segmentation.segment_electrodes(contacts, N_ELECTRODES)
+    labels, models = segmentation_multimodel.segment_electrodes(
+        contacts, N_ELECTRODES, 
+        model_cls=LinearElectrodeModel)
 
-    # Assigning an id to all contacts of each electrode, based on depth
-    ct_center_physical = ct_object.apply_affine(
-        coords=np.array(ct_object.ct.shape)/2, 
-        mode='forward')
-    contacts, labels, contacts_ids = postprocessing.postprocess(
-        contacts, labels, ct_center_physical)
 
-    # Converting contacts back to voxel coordinates
-    contacts = ct_object.apply_affine(contacts, 'inverse')
-
-    # TODO remove
-    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
-
-    # Plotting results
-    log("Plotting results")
-    pv_plotter = None
-    # TODO uncomment
-    #pv_plotter = plot.plot_binary_electrodes(ct_object.mask, pv_plotter)
-    #pv_plotter = plot.plot_ct(ct_object.ct, pv_plotter)
-    pv_plotter = plot.plot_colored_electrodes(contacts, labels, pv_plotter)
-
-    # TODO remove debug
-    plane_center = ct_object.apply_affine(segmentation.DEBUG_PLANE_CENTER, 'inverse')
-    plane_normal = np.linalg.inv(ct_object.affine[:3,:3]) @ segmentation.DEBUG_PLANE_NORMAL
-    pv_plotter = plot.plot_plane(plane_center, plane_normal, pv_plotter)
-
-    pv_plotter.add_axes()
-    pv_plotter.show()
+    ### Assigning an id to all contacts of each electrode, based on depth
+    log("Post-processing results")
+    old_contacts = contacts        # Saved for plotting purposes
+    contacts, labels, contacts_ids, models = postprocessing.postprocess(
+        contacts, labels, ct_center_world, models, electrodes_info,
+        model_cls=ParabolaElectrodeModel)
     
-    # TODO remove
-    plot.plot_plane_proj_features(segmentation.FEATURES, labels)
+    ### Validation: retrieving stats about distance error
+    log("Validating results")
+    ground_truth = validation.get_ground_truth(ground_truth_path,
+                                               ct_object.convert_vox_to_world)
+    results = validation.validate_contacts_position(
+        contacts,
+        ground_truth,
+        0.75*postprocessing.__estimate_intercontact_distance(contacts),
+    )
+    (matched_dt_idx, matched_gt_idx, 
+        excess_dt_idx, holes_gt_idx, stats_print) = results
+
+    ### Plotting results in voxel space
+    log("Plotting results")
+    plotter = plot.ElectrodePlotter(ct_object.convert_world_to_vox)
+    plotter.update_focal_point(contacts.mean(axis=0))
+    #plotter.plot_ct(ct_object.ct)
+    plotter.plot_ct_electrodes(ct_object.mask)
+    plotter.plot_electrodes(models)
+    plotter.plot_colored_contacts(contacts, labels)
+    plotter.plot_contacts(contacts[excess_dt_idx], color=(0,0,0), 
+                          size_multiplier=2.5)
+    plotter.plot_contacts(ground_truth[holes_gt_idx], color=(255,255,255), 
+                          size_multiplier=2.5)
+    plotter.plot_matches(contacts[matched_dt_idx], 
+                         ground_truth[matched_gt_idx])
+    plotter.show()
 
     # Saving results to CSV file
     log("Saving results to CSV file")
     output_csv.save_output(contacts, labels, contacts_ids)
+
+    print(stats_print)
+
 
 if __name__ == '__main__':
     main()

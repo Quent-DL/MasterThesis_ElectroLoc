@@ -1,7 +1,9 @@
 import numpy as np
+from numpy import cross
+from numpy.linalg import norm
 import nibabel as nib
 from datetime import datetime
-from typing import Literal, Tuple
+from typing import Literal, Tuple, Optional
 import pandas as pd
 import os
 from sklearn.linear_model import LinearRegression
@@ -25,7 +27,7 @@ def log(msg: str, erase: bool=False) -> None:
 def get_regression_line_parameters(
         points: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-    """TODO write documentation
+    """Computes a linear regression using the given 3-dimensional points.
     
     ### Input:
     - points: an array of shape (K, 3) that contains the 3D coordinates of
@@ -52,17 +54,24 @@ def get_regression_line_parameters(
     )
 
 
-def distance_matrix(coords: np.ndarray) -> np.ndarray:
-    """Compute the distance matrix of an array of points.
+def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
+    """Compute the distance matrix between the points of an array, or between
+    the points of two arrays.
     
     ### Input:
-    - coords: an array of shape (N, K) that contains N K-dimensional points.
+    - a: an array of N K-dimensional points. Shape (N, K).
+    - b (optional): an array of M other K-dimensional points. Shape (M, K).
+    If specified, the matrix returned contains the distance between each pair
+    of points (p, q) such that 'p' belongs to 'a' and 'q' belongs to 'b'.
+    If None, 'b' is set to 'a' by default.
     
     ### Output:
-    - distance_matrix: an array of shape (N, N) such that 
-    distance_matrix[i, j] contains the euclidian distance between coords[i]
-    and coords[j]. By definition, 'distance_matrix' is symmetric."""
-    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    - distance_matrix: an array of shape (N, M) such that 
+    distance_matrix[i, j] contains the euclidian distance between a[i]
+    and b[j]. If a == b, then 'distance_matrix' is symmetric."""
+    if b is None:
+        b = a
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
     distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
     return distance_matrix
 
@@ -85,10 +94,11 @@ class NibCTWrapper:
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
 
-    def apply_affine(
+    def __apply_affine(
             self,
             coords: np.ndarray, 
-            mode: Literal['forward', 'inverse']
+            mode: Optional[Literal['forward', 'inverse']] = "forward",
+            apply_translation: Optional[bool] = True
     ) -> np.ndarray:
         """TODO write documentation
         
@@ -97,6 +107,8 @@ class NibCTWrapper:
 
         # The homogenous transform matrix, shape (4, 4)
         A = self.affine if mode=="forward" else np.linalg.inv(self.affine)
+        if not apply_translation:
+            A[:3,3] = 0    # removing translation coefficients
 
         if len(coords.shape) == 2:
             # Corods of shape (N, 3)
@@ -112,7 +124,22 @@ class NibCTWrapper:
             hmg_coords = np.append(coords, 1).reshape((4,1))   # Shape(4, 1)
             # Getting rid of homogeneous 1 + reshaping to (3,)
             return (A @ hmg_coords)[:3].reshape((3,))
-
+        
+    def convert_vox_to_world(
+            self, 
+            vox_coords: np.ndarray,
+            apply_translation: Optional[bool] = True
+    ) -> np.ndarray:
+        """TODO write documentation. Input shape (3,) or (N, 3)"""
+        return self.__apply_affine(vox_coords, 'forward', apply_translation)
+    
+    def convert_world_to_vox(
+            self, 
+            vox_coords: np.ndarray,
+            apply_translation: Optional[bool] = True
+    ) -> np.ndarray:
+        """TODO write documentation. Input shape (3,) or (N, 3)"""
+        return self.__apply_affine(vox_coords, 'inverse', apply_translation)
 
 
 class OutputCSV:
@@ -127,17 +154,12 @@ class OutputCSV:
         if (self.raw_contacts_path is None 
                 or not os.path.exists(self.raw_contacts_path)):
             return False
-        df = pd.read_csv(self.raw_contacts_path)
-        # TODO concatenate
-        a = ('ct_vox_x' in df) 
-        b = ('ct_vox_y' in df)
-        c = ('ct_vox_z' in df)
-        z = a and b and c
-        return z
+        df = pd.read_csv(self.raw_contacts_path, comment="#")
+        return ('ct_vox_x' in df) and ('ct_vox_y' in df) and ('ct_vox_z' in df)
 
     def load_raw_contacts(self) -> np.ndarray:
         """TODO write documentation"""
-        df = pd.read_csv(self.raw_contacts_path)
+        df = pd.read_csv(self.raw_contacts_path, comment="#")
         contacts_df = df[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']]
         return contacts_df.to_numpy(dtype=np.float32)
 
@@ -182,3 +204,24 @@ class OutputCSV:
             index=False,
             float_format=lambda f: round(f, 3))
         return df
+
+
+class ElectrodesInfo:
+    def __init__(self, path):
+        """Initialize an instance from the information in the given CSV file.
+        The CSV file must contain the following column names:
+        - 'ct_vox_x','ct_vox_y','ct_vox_z': the voxel coordinates of the
+        entry points of each electrode.
+        - 'nb_contacts': number of contacts on each electrode
+            
+        ### Input:
+        - path: the path to the CSV file"""
+        df = pd.read_csv(path, comment='#')
+
+        # Number of electrodes. Int.
+        self.nb_electrodes = len(df)
+        # Entry points. Shape (NB_ELECTRODES, 3)
+        coords_columns = ['ct_vox_x','ct_vox_y','ct_vox_z']
+        self.entry_points = df[coords_columns].to_numpy(dtype=np.float32)
+        # Number of contacts. Shape (NB_ELECTRODES,)
+        self.nb_contacts = df['nb_contacts'].to_numpy(dtype=int)
