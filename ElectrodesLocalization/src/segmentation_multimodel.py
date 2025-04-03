@@ -1,6 +1,8 @@
 # Ref: DOI - 10.1007/s11263-011-0474-7
 
-from electrode_models import ElectrodeModel, LinearElectrodeModel
+from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
+                              ParabolaElectrodeModel)
+from utils import log
 
 import numpy as np
 from numpy import cross
@@ -205,7 +207,7 @@ def segment_electrodes(
     """TODO write documentation"""
 
     # TODO tweak hyperparams
-    model_cls = LinearElectrodeModel
+    model_cls = ParabolaElectrodeModel
     n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     lambda_weight = 1
     min_inliers = model_cls.MIN_SAMPLES + 1

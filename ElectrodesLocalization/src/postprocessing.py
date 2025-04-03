@@ -252,7 +252,6 @@ def __match_labels(
     # TODO use other system to ensure double bijection between old and new labels
     convert_to_old = distances.argmin(axis=0)
 
-
     # Updating list of models
     # Source: https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
 
@@ -307,7 +306,7 @@ def __model_fit_apply(
 
         # Defining loss function
         loss = lambda t0: __model_fit_loss(
-            t0, model, model_contacts, nb_contacts[k], 
+            t0[0], model, model_contacts, nb_contacts[k], 
             intercontact_dist, gamma)    
         
         # Defining t0 from which to start the search
@@ -315,6 +314,7 @@ def __model_fit_apply(
         init_t0 = np.array([init_t0])    # Shape (1,) for scipy
         
         # Computing optimal t0* that locally minimizes loss
+        # TODO: try replacing by minimize_scalar (even if no init_t0 can be given)
         optimize_res = minimize(loss, init_t0)
         if not optimize_res.success:
             print("Warning: Could not optimize model k."
@@ -349,7 +349,7 @@ def postprocess(
         models: List[ElectrodeModel],
         elec_info: ElectrodesInfo,
         intercontact_distance: float=None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, ElectrodeModel]:
     """TODO write documentation"""
 
     # TODO write rest of implementation of the function

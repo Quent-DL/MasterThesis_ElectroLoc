@@ -95,7 +95,7 @@ def main():
     plotter.update_focal_point(contacts.mean(axis=0))
     #plotter.plot_ct(ct_object.ct)
     plotter.plot_ct_electrodes(ct_object.mask)
-    plotter.plot_linear_electrodes(models)
+    plotter.plot_electrodes(models)
     plotter.plot_colored_contacts(contacts, labels)
     plotter.plot_contacts(contacts[excess_dt_idx], color=(0,0,0), 
                           size_multiplier=2.5)
@@ -110,6 +110,9 @@ def main():
     output_csv.save_output(contacts, labels, contacts_ids)
 
     print(stats_print)
+
+    # TODO debug timer remove
+    print(models[0].timers)
 
 
 if __name__ == '__main__':

@@ -6,7 +6,8 @@ import pyvista as pv
 import random as random
 import numpy as np
 import matplotlib.pyplot as plt
-from electrode_models import LinearElectrodeModel
+from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
+                              ParabolaElectrodeModel)
 from typing import List, Callable, Optional, Tuple
 
 __COLOR_PALETTE = [
@@ -111,7 +112,20 @@ class ElectrodePlotter:
                 point_cloud, color=color, point_size=8, 
                 render_points_as_spheres=True)
 
-    def plot_linear_electrodes(self, models: List[LinearElectrodeModel]) -> None:
+    def plot_matches(self, matched_DT, matched_GT) -> None:
+        """TODO write documentation"""
+        for dt, gt in zip(matched_DT, matched_GT):
+            line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
+            self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)
+
+    def plot_electrodes(self, models: List[ElectrodeModel]) -> None:
+        if isinstance(models[0], LinearElectrodeModel):
+            self.plot_linear_electrodes(models)
+        elif isinstance(models[0], ParabolaElectrodeModel):
+            self.plot_parabolic_electrodes(models)
+
+    def plot_linear_electrodes(
+            self, models: List[LinearElectrodeModel]) -> None:
         for k, model in enumerate(models):
             color = get_color(k)
             p = self.func_world2vox(model.point)
@@ -121,8 +135,11 @@ class ElectrodePlotter:
             line = pv.Line(a, b)
             self.plotter.add_mesh(line, color=color, line_width=3)
 
-    def plot_matches(self, matched_DT, matched_GT) -> None:
-        """TODO write documentation"""
-        for dt, gt in zip(matched_DT, matched_GT):
-            line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
-            self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)
+    def plot_parabolic_electrodes(
+            self, models: List[ParabolaElectrodeModel]) -> None:
+        for k, model in enumerate(models):
+            color = get_color(k)
+            t = np.linspace(-10, 10, 100)
+            x = model.compute_position_at_t(t)
+            spline = pv.Spline(x)
+            self.plotter.add_mesh(spline, color=color, line_width=3)
