@@ -208,6 +208,7 @@ def segment_electrodes(
     """TODO write documentation"""
 
     # TODO tweak hyperparams
+    # TODO instead of hard-coded nb of init models, compute one for each neighboring pair
     n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     lambda_weight = 1
     min_inliers = model_cls.MIN_SAMPLES + 1

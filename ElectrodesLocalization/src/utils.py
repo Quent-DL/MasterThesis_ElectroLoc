@@ -155,12 +155,7 @@ class OutputCSV:
                 or not os.path.exists(self.raw_contacts_path)):
             return False
         df = pd.read_csv(self.raw_contacts_path, comment="#")
-        # TODO concatenate
-        a = ('ct_vox_x' in df) 
-        b = ('ct_vox_y' in df)
-        c = ('ct_vox_z' in df)
-        z = a and b and c
-        return z
+        return ('ct_vox_x' in df) and ('ct_vox_y' in df) and ('ct_vox_z' in df)
 
     def load_raw_contacts(self) -> np.ndarray:
         """TODO write documentation"""
