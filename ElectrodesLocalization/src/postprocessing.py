@@ -265,7 +265,7 @@ def __model_fit_apply(
         model_sequence = model.get_sequence(
             nb_contacts[k], t0, intercontact_dist, gamma)
         new_contacts.append(model_sequence)
-        new_labels.append(k * np.ones((nb_contacts[k],)))
+        new_labels.append(k * np.ones((nb_contacts[k],), dtype=int))
         new_positions_ids.append(np.arange(nb_contacts[k]))
     
     new_contacts      = np.concatenate(new_contacts)
