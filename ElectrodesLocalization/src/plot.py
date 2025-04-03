@@ -152,7 +152,7 @@ class ElectrodePlotter:
             # Plotting
             color = get_color(k)
             # TODO replace hard-coded 70 by meaningful value
-            t = np.linspace(-70, 70, 100)
+            t = np.linspace(-50, 50, 100)
             x = model_plot.compute_position_at_t(t)
             spline = pv.Spline(x)
             self.plotter.add_mesh(spline, color=color, line_width=3)

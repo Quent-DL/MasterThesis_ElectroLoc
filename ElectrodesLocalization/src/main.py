@@ -30,10 +30,12 @@ def main():
     ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
     contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
     elec_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
-    output_path       = os.path.join(data_dir, "out\\electrodes.csv")
     # Inputs for validation
     ground_truth_path = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
                         f"data_ground_truths\\{path_suffix}\\ground_truth.csv")
+    # Output
+    output_positions_path = os.path.join(data_dir, "out\\electrodes.csv")
+    output_nifti_path = os.path.join(data_dir, "out\\electrodes_mask.nii.gz")
 
     ### Loading the data
     log("Loading data")
@@ -41,7 +43,7 @@ def main():
     electrodes_info = utils.ElectrodesInfo(elec_info_path)
 
     ### Preparing the object to store and save the output
-    output_csv = utils.OutputCSV(output_path, raw_contacts_path=contacts_path)
+    output_csv = utils.OutputCSV(output_positions_path, raw_contacts_path=contacts_path)
 
     ### Preprocessing
     log ("Preprocessing data")
@@ -80,6 +82,7 @@ def main():
     contacts, labels, contacts_ids, models = postprocessing.postprocess(
         contacts, labels, ct_center_world, models, electrodes_info,
         model_cls=ParabolaElectrodeModel)
+    intercontact_dist_world = postprocessing.__estimate_intercontact_distance(contacts)
     
     ### Validation: retrieving stats about distance error
     log("Validating results")
@@ -88,7 +91,7 @@ def main():
     results = validation.validate_contacts_position(
         contacts,
         ground_truth,
-        0.75*postprocessing.__estimate_intercontact_distance(contacts),
+        0.75*intercontact_dist_world,
     )
     (matched_dt_idx, matched_gt_idx, 
         excess_dt_idx, holes_gt_idx, stats_print) = results
@@ -110,8 +113,12 @@ def main():
     plotter.show()
 
     # Saving results to CSV file
-    log("Saving results to CSV file")
-    output_csv.save_output(contacts, labels, contacts_ids)
+    log("Saving results")
+    contacts_vox = ct_object.convert_world_to_vox(contacts)
+    intercontact_dist_vox = postprocessing.__estimate_intercontact_distance(contacts)
+    output_csv.save_output(contacts_vox, labels, contacts_ids)
+    ct_object.save_contacts_mask(
+        output_nifti_path, contacts_vox, 0.25*intercontact_dist_vox)
 
     print(stats_print)
 
