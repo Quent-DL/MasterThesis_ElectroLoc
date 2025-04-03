@@ -4,17 +4,14 @@ ElectrodeModel is the interface with functions that all inheriting classes
 should implement.
 """
 
-from utils import get_regression_line_parameters
+from utils import get_regression_line_parameters, distance_matrix
 
 import numpy as np
 from numpy import cross, sqrt, log
 from numpy.linalg import norm
-from typing import Literal, Union
+from typing import Literal, Union, Self
 from overrides import override
 from scipy.optimize import minimize_scalar
-
-# TODO remove timer debug
-from time import perf_counter
 
 
 class ElectrodeModel:
@@ -35,7 +32,7 @@ class ElectrodeModel:
         raise RuntimeError(
             "ElectrodeModel is an interface and must not be instantiated.")
     
-    def compute_dissimilarity(self, other) -> float:
+    def compute_dissimilarity(self, other: Self) -> float:
         """Computes the dissimilarity between this model and the given one.
         
         ### Input:
@@ -74,7 +71,7 @@ class ElectrodeModel:
         - None"""
         raise NotImplementedError("Method not implemented by child class.")
 
-    def merge(self, other, w_self: float, w_other: float) -> None:
+    def merge(self, other: Self, w_self: float, w_other: float) -> None:
         """Merges the parameters of two models, and overwrites this model
         with the result. Modifies the model internally.
         
@@ -178,7 +175,7 @@ class LinearElectrodeModel(ElectrodeModel):
         self.recompute(samples)
 
     @override
-    def compute_dissimilarity(self, other) -> float:
+    def compute_dissimilarity(self, other: Self) -> float:
         if not isinstance(other, LinearElectrodeModel):
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
@@ -221,7 +218,7 @@ class LinearElectrodeModel(ElectrodeModel):
         self.direction /= norm(self.direction)
 
     @override
-    def merge(self, other, w_self: float, w_other: float) -> None:
+    def merge(self, other: Self, w_self: float, w_other: float) -> None:
         if type(other) != LinearElectrodeModel:
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
@@ -294,24 +291,15 @@ class ParabolaElectrodeModel(ElectrodeModel):
     organized such as [[a_x, b_x, z_x], [a_y, b_y, c_y], [a_z, b_z, c_z]]."""
     MIN_SAMPLES = 3
 
-    # TODO debug timer remove
-    timers = {
-        'recompute': 0.0,
-        'project': 0.0,
-        'distance': 0.0,
-        'get_sequence': 0.0,
-        'get_projection_t': 0.0
-    }
-
     @override
     def __init__(self, samples: np.ndarray):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
-            raise ValueError("Expected at least 2 samples to create model."
+            raise ValueError("Expected at least 3 samples to create model."
                              f"Got {len(samples)}.")
         self.recompute(samples)
 
     @override
-    def compute_dissimilarity(self, other) -> float:
+    def compute_dissimilarity(self, other: Self) -> float:
         if not isinstance(other, ParabolaElectrodeModel):
             raise ValueError("'other' must be of type ParabolaElectrodeModel."\
                              f"Got {type(other)}.")
@@ -332,20 +320,11 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
     @override
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
-        # TODO debug timer remove
-        timer_start = perf_counter()
-
         projs = self.project(points)    # Shape (N, 3)
-    
-        # TODO debug timer remove
-        ParabolaElectrodeModel.timers['distance'] += perf_counter() - timer_start
-
         return np.sqrt(np.sum((points-projs)**2, axis=1))
     
     @override
     def recompute(self, samples: np.ndarray) -> None:
-        # TODO debug timer remove
-        timer_start = perf_counter()
 
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
@@ -382,11 +361,8 @@ class ParabolaElectrodeModel(ElectrodeModel):
         b = samples.flatten()
         self.coefs = np.linalg.lstsq(A, b)[0].reshape((3,3))
 
-        # TODO debug timer remove
-        ParabolaElectrodeModel.timers['recompute'] += perf_counter() - timer_start
-
     @override
-    def merge(self, other, w_self: float, w_other: float) -> None:
+    def merge(self, other: Self, w_self: float, w_other: float) -> None:
         if type(other) != ParabolaElectrodeModel:
             raise ValueError("'other' must be of type ParabolaElectrodeModel."\
                              f"Got {type(other)}.")
@@ -401,24 +377,14 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
     @override
     def project(self, contacts: np.ndarray) -> np.ndarray:
-        
-        # TODO debug timer remove
-        timer_start = perf_counter()
-
         t_proj = self.get_projection_t(contacts)
         x = self.compute_position_at_t(t_proj)
-    
-        # TODO debug timer remove
-        ParabolaElectrodeModel.timers['project'] += perf_counter() - timer_start
 
         return x
 
     @override
     def get_sequence(self, nb_points: int, t0: float, inter_distance: float, 
                      gamma: Literal[-1, 1]) -> np.ndarray:
-        
-        # TODO debug timer remove
-        timer_start = perf_counter()
 
         def antiderivative_arclength(
                 t: Union[float|np.ndarray]) -> Union[float|np.ndarray]:
@@ -478,7 +444,7 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
         # a function to quickly compute curve length between t and t0
         anti_t0 = antiderivative_arclength(t0)    # only computed once
-        curve_length = lambda t: antiderivative_arclength(t) - anti_t0
+        curve_length = lambda t: np.abs(antiderivative_arclength(t) - anti_t0)
         
         delta_T = get_smallest_sufficient_deltaT(nb_points*inter_distance, t0)
 
@@ -499,12 +465,7 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
         # From the chosen t-values, we can compute the points. 
         # Shape (nb_points, 3).
-        x = self.compute_position_at_t(picked_t)
-        
-        # TODO debug timer remove
-        ParabolaElectrodeModel.timers['get_sequence'] += perf_counter() - timer_start
-
-        return x
+        return self.compute_position_at_t(picked_t)
 
     @override
     def get_gamma(self, a: np.ndarray, b: np.ndarray) -> int:
@@ -533,9 +494,6 @@ class ParabolaElectrodeModel(ElectrodeModel):
     @override
     def get_projection_t(self, points: np.ndarray) -> float:
 
-        # TODO debug timer remove
-        timer_start = perf_counter()
-
         def solve_for_one(point):
             """Solves the projection problem for one sample.
             Input: one sample of shape (3,).
@@ -551,18 +509,13 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
         if len(points.shape) == 1:
             # 'a' has shape (3,)
-            res = solve_for_one(points)
+            return solve_for_one(points)
         else:
             # 'a' has shape (N, 3) => treat one sample at a time
             results = []
             for sample in points:
                 results.append(solve_for_one(sample))
-            res = np.array(results)
-        
-        # TODO debug timer remove
-        ParabolaElectrodeModel.timers['get_projection_t'] += perf_counter() - timer_start
-
-        return res
+            return np.array(results)
 
     def get_time_vector(self, t: Union[float, np.ndarray]) -> np.ndarray:
         """Creates the array [t^2, t, 1] to multiply to self.coefs to compute

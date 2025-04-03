@@ -203,11 +203,11 @@ def __reduce_models(
 def segment_electrodes(
         contacts: np.ndarray,
         n_electrodes: int,
+        model_cls: Type[ElectrodeModel] = LinearElectrodeModel
 ) -> np.ndarray:
     """TODO write documentation"""
 
     # TODO tweak hyperparams
-    model_cls = ParabolaElectrodeModel
     n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     lambda_weight = 1
     min_inliers = model_cls.MIN_SAMPLES + 1

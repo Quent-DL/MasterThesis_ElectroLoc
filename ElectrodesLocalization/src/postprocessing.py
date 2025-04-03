@@ -1,11 +1,11 @@
 import utils
 from utils import ElectrodesInfo
-from electrode_models import ElectrodeModel
+from electrode_models import ElectrodeModel, LinearElectrodeModel
 
 import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
-from typing import Tuple, List
+from typing import Tuple, List, Type
 from scipy.optimize import minimize
 
 
@@ -122,9 +122,6 @@ def  __reassign_labels_closest(
     HYPER_PARAM_DIST = 3
 
     distances = []
-
-    # TODO remove
-    DEBUG = np.unique(labels)
 
     for e_id in np.unique(labels):
         if e_id == -1:
@@ -348,7 +345,8 @@ def postprocess(
         ct_center: np.ndarray,
         models: List[ElectrodeModel],
         elec_info: ElectrodesInfo,
-        intercontact_distance: float=None
+        intercontact_distance: float=None,
+        model_cls: Type[ElectrodeModel] = LinearElectrodeModel
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, ElectrodeModel]:
     """TODO write documentation"""
 
@@ -364,6 +362,10 @@ def postprocess(
     #labels = __reassign_labels_closest(contacts, labels)
 
     # ...
+
+    # Re-fitting models with new class, based on support of previous models
+    for k, model in enumerate(models):
+        models[k] = model_cls(contacts[labels==k])
 
     # Computing the electrode-wise positional id of each contact
     positions_ids = __get_electrodes_contacts_ids(contacts, labels, ct_center)

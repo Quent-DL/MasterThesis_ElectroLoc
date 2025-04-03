@@ -1,14 +1,17 @@
 """
-This file is responsible for plotting the data
+This file is responsible for plotting the data and models
 """
+
+from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
+                              ParabolaElectrodeModel)
 
 import pyvista as pv
 import random as random
 import numpy as np
 import matplotlib.pyplot as plt
-from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
-                              ParabolaElectrodeModel)
 from typing import List, Callable, Optional, Tuple
+from copy import copy
+
 
 __COLOR_PALETTE = [
     
@@ -138,8 +141,18 @@ class ElectrodePlotter:
     def plot_parabolic_electrodes(
             self, models: List[ParabolaElectrodeModel]) -> None:
         for k, model in enumerate(models):
+            # Creating a voxel-space copy of the model
+            model_plot = copy(model)
+            v, u, c = model.coefs.T
+            v = self.func_world2vox(v, apply_translation=False)
+            u = self.func_world2vox(u, apply_translation=False)
+            c = self.func_world2vox(c)
+            model_plot.coefs = np.stack([v, u, c], axis=-1)
+
+            # Plotting
             color = get_color(k)
-            t = np.linspace(-10, 10, 100)
-            x = model.compute_position_at_t(t)
+            # TODO replace hard-coded 70 by meaningful value
+            t = np.linspace(-70, 70, 100)
+            x = model_plot.compute_position_at_t(t)
             spline = pv.Spline(x)
             self.plotter.add_mesh(spline, color=color, line_width=3)

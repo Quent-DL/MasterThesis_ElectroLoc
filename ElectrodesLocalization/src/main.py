@@ -7,6 +7,8 @@ import postprocessing
 import validation
 import plot
 
+from electrode_models import LinearElectrodeModel, ParabolaElectrodeModel
+
 # External modules
 import os
 import numpy as np
@@ -68,14 +70,16 @@ def main():
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
     labels, models = segmentation_multimodel.segment_electrodes(
-        contacts, N_ELECTRODES)
+        contacts, N_ELECTRODES, 
+        model_cls=LinearElectrodeModel)
 
 
     ### Assigning an id to all contacts of each electrode, based on depth
     log("Post-processing results")
     old_contacts = contacts        # Saved for plotting purposes
     contacts, labels, contacts_ids, models = postprocessing.postprocess(
-        contacts, labels, ct_center_world, models, electrodes_info)
+        contacts, labels, ct_center_world, models, electrodes_info,
+        model_cls=ParabolaElectrodeModel)
     
     ### Validation: retrieving stats about distance error
     log("Validating results")
@@ -110,9 +114,6 @@ def main():
     output_csv.save_output(contacts, labels, contacts_ids)
 
     print(stats_print)
-
-    # TODO debug timer remove
-    print(models[0].timers)
 
 
 if __name__ == '__main__':
