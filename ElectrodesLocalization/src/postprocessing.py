@@ -121,8 +121,18 @@ def __estimate_intercontact_distance(
     # Ensuring that the closest detected neighbor of a contact isn't itself.
     distance_map[distance_map==0] = distance_map.max()
 
-    # For each contact, the distance to its closest neighbor. Shape (N,)
-    distances_neigh = distance_map.min(axis=1)
+    # For each contact, the index of its closest neighbor + distance. Shape (N,)
+    neigh_1 = distance_map.argmin(axis=1)
+    dist_1  = distance_map[range(len(distance_map)), neigh_1]
+
+    # For each contact, the distance to its 2nd closest neighbor. Shape (N,).
+    # -> invalidating 1st closest neighbor
+    distance_map[range(len(distance_map)), neigh_1] = distance_map.max()
+    dist_2 = distance_map.min(axis=1)
+
+    # A list of all the distances between a contact and its closest neighbors.
+    # Shape (2N,)
+    distances_neigh = np.concatenate([dist_1, dist_2])
 
     # TODO don't only take closest pairs (bias towards small intercontact distance)
     # ==> Also use 2nd closest
