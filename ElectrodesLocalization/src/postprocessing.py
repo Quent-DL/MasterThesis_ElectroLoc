@@ -159,18 +159,30 @@ def __match_labels(
 ) -> np.ndarray:
     """TODO write documentation
     - len(models) == entry_points.shape[0] == len(old_labels)"""
+    assert len(old_models) == len(entry_points), "There should be an"
+    "identical number of models and entry points. Got respectively "
+    f"{old_models} and {entry_points}. Please check your inputs."
     # Distances between each model and each entry point
     distances = []
     for k, model in enumerate(old_models):
         distances.append(model.compute_distance(entry_points))
 
-    # Shape (n_models, n_entry_points)   (should normally be squared)
+    # Shape (n_models, n_entry_points)   -> square matrix
     distances = np.stack(distances)
 
     # The new labels such that, if model[i] matches entry_poins[j],
     # then i = convert_to_old[j]
-    # TODO use other system to ensure double bijection between old and new labels
-    convert_to_old = distances.argmin(axis=0)
+    # Using stable marriage problem to find an optimal bijection between
+    # old and new labels.
+    convert_to_old = np.empty((len(old_models),), dtype=int)
+    invalid = distances.max() + 1    # Unpickable value in min or argmin
+    for _ in range(len(old_models)):
+        # picking pair with smallest distance
+        (i, j) = np.unravel_index(distances.argmin(), distances.shape)
+        # making each member of the pair unavailable for the following picks
+        distances[i,:] = invalid
+        distances[:,j] = invalid
+        convert_to_old[j] = i
 
     # Updating list of models
     # Source: https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
@@ -184,7 +196,7 @@ def __match_labels(
         new_labels[old_labels == i] = j
     
     # TODO Debug, replace by handling the case and forcing the mapping to be bijective
-    assert not -1 in new_labels, "Not all old labels have been updated"
+    assert not -1 in new_labels, "Algo bug: Not all old labels have been updated"
 
     return new_models, new_labels
 
