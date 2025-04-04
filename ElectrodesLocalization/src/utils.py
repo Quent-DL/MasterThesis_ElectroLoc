@@ -178,7 +178,6 @@ class NibCTWrapper:
         def mask_box(box_c: np.ndarray) -> None:
             """Returns the boolean sphere around voxel c into the flattened mask."""
             # Generated using ChatGPT
-            
             boxL, boxW, boxH = (x_bfr+1+x_aft, y_bfr+1+y_aft, z_bfr+1+z_aft)
             x, y, z = np.meshgrid(
                 np.arange(boxL), np.arange(boxW), np.arange(boxH), indexing='ij')
@@ -190,6 +189,8 @@ class NibCTWrapper:
 
         # Generating binary mask
         for c in contacts:  
+            # Optimisation: only considering a box around c to compute the
+            # distances => MUCH faster
             # Computing margin between the edges of the box and the center
             c = c.astype(int)
             x_bfr, x_aft, y_bfr, y_aft, z_bfr, z_aft = (

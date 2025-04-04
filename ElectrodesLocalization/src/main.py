@@ -7,7 +7,7 @@ import postprocessing
 import validation
 import plot
 
-from electrode_models import LinearElectrodeModel, ParabolaElectrodeModel
+from electrode_models import LinearElectrodeModel, ParabolicElectrodeModel
 
 # External modules
 import os
@@ -78,10 +78,9 @@ def main():
 
     ### Assigning an id to all contacts of each electrode, based on depth
     log("Post-processing results")
-    old_contacts = contacts        # Saved for plotting purposes
     contacts, labels, contacts_ids, models = postprocessing.postprocess(
         contacts, labels, ct_center_world, models, electrodes_info,
-        model_cls=ParabolaElectrodeModel)
+        model_cls=ParabolicElectrodeModel)
     intercontact_dist_world = postprocessing.__estimate_intercontact_distance(contacts)
     
     ### Validation: retrieving stats about distance error

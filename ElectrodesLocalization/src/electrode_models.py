@@ -273,7 +273,7 @@ class LinearElectrodeModel(ElectrodeModel):
             return (proj[:,j] - self.point[j]) / self.direction[j]
 
 
-class ParabolaElectrodeModel(ElectrodeModel):
+class ParabolicElectrodeModel(ElectrodeModel):
     """A model for electrodes that follow a quadratic curve (= parabola).
 
     A 3D parabola is a curve with the following t-parametrized equations:
@@ -300,7 +300,7 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
     @override
     def compute_dissimilarity(self, other: Self) -> float:
-        if not isinstance(other, ParabolaElectrodeModel):
+        if not isinstance(other, ParabolicElectrodeModel):
             raise ValueError("'other' must be of type ParabolaElectrodeModel."\
                              f"Got {type(other)}.")
         
@@ -363,7 +363,7 @@ class ParabolaElectrodeModel(ElectrodeModel):
 
     @override
     def merge(self, other: Self, w_self: float, w_other: float) -> None:
-        if type(other) != ParabolaElectrodeModel:
+        if type(other) != ParabolicElectrodeModel:
             raise ValueError("'other' must be of type ParabolaElectrodeModel."\
                              f"Got {type(other)}.")
         

@@ -1,7 +1,7 @@
 # Ref: DOI - 10.1007/s11263-011-0474-7
 
 from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
-                              ParabolaElectrodeModel)
+                              ParabolicElectrodeModel)
 from utils import log
 
 import numpy as np

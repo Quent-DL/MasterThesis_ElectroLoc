@@ -3,7 +3,7 @@ This file is responsible for plotting the data and models
 """
 
 from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
-                              ParabolaElectrodeModel)
+                              ParabolicElectrodeModel)
 
 import pyvista as pv
 import random as random
@@ -124,7 +124,7 @@ class ElectrodePlotter:
     def plot_electrodes(self, models: List[ElectrodeModel]) -> None:
         if isinstance(models[0], LinearElectrodeModel):
             self.plot_linear_electrodes(models)
-        elif isinstance(models[0], ParabolaElectrodeModel):
+        elif isinstance(models[0], ParabolicElectrodeModel):
             self.plot_parabolic_electrodes(models)
 
     def plot_linear_electrodes(
@@ -139,7 +139,7 @@ class ElectrodePlotter:
             self.plotter.add_mesh(line, color=color, line_width=3)
 
     def plot_parabolic_electrodes(
-            self, models: List[ParabolaElectrodeModel]) -> None:
+            self, models: List[ParabolicElectrodeModel]) -> None:
         for k, model in enumerate(models):
             # Creating a voxel-space copy of the model
             model_plot = copy(model)
