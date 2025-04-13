@@ -75,8 +75,7 @@ def main():
         contacts, N_ELECTRODES, 
         model_cls=LinearElectrodeModel)
 
-
-    ### Assigning an id to all contacts of each electrode, based on depth
+    ### Postprocessing
     log("Post-processing results")
     contacts, labels, contacts_ids, models = postprocessing.postprocess(
         contacts, labels, ct_center_world, models, electrodes_info,
