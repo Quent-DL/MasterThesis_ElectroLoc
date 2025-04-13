@@ -2,6 +2,8 @@ import numpy as np
 from scipy.ndimage import (binary_erosion, binary_propagation,
                            label, center_of_mass)
 from utils import log
+from typing import Tuple
+import typing
 
 
 def __get_structuring_element(type='cross'):
@@ -64,22 +66,34 @@ def __binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
     return result
 
 
-def __opti_center_of_mass(input, labels, index):
-    """This function is an optimized wrapper of the function 
-    'scipy.ndimage.center_of_mass' that restricts the size of the input array
-    and only keep the smallest relevant box (i.e. the smallest box that 
-    contains all occurences of 'index') before feeding it to 
-    scipy.ndimage.center_of_mass.
-    
+def __get_box(mask: np.ndarray, *arrays: np.ndarray) -> Tuple[np.ndarray, ...]:
+    """Extracts the smallest box that fully contains all the 1's in the given
+    binary mask and returns it. That box is also be applied to any additional
+    array given.
+
+    We define as "box" a set of indices [lx:ux, ly:uy, lz:uz] used to
+    extract sub-arrays from bigger ones. We compute it by finding the biggest
+    lx, ly, lz and the smallest ux, uy, uz such that mask[lx:ux, ly:uy, lz:uz]
+    contains all the 1's present in 'mask'.
+
     ### Inputs:
-    The inputs are the same as those of scipy.ndimage.center_of_mass. Arrays
-    'input' and 'labels' must both be of shape (L, M, N).
-    
-    ### Output:
-    coords: an array of shape (3,) that contains the same coordinates as 
-    returned by scipy.ndimage.center_of_mass, but computed faster."""
+    - mask: the input mask from which the box is computed. Shape (W, L, H).
+    - arrays: other arrays to which the box must be applied. Must all have
+    the same shape as 'mask'.
+
+    ### Outputs:
+    The output is the tuple (offset, *boxes) where:
+    - offset: the coordinates of the 'bottom' corner of the extracted box.
+    An item at indice [i, j, k] in the resulting box can be found at indices
+    [i+offset[0], j+offset[1], k+offset[2]] in the original input array.
+    (see below). Array with shape (3,).
+    - *boxes: the result when extracting a box from 'mask' and applying it to
+    all the given arrays. The length of 'boxes' matches the number of input
+    arrays ('mask' included). Each item in 'boxes' is an array with identical
+    shape (W', L', H') such that W'<=W, L'<=L, and H'<=H. 
+
+"""
     # Computing the lower and upper bound of the coordinates of the useful box
-    mask = (labels == index)
     lx = np.where(mask.any(axis=(1, 2)))[0].min()
     ux = np.where(mask.any(axis=(1, 2)))[0].max() + 1
     ly = np.where(mask.any(axis=(0, 2)))[0].min()
@@ -87,17 +101,14 @@ def __opti_center_of_mass(input, labels, index):
     lz = np.where(mask.any(axis=(0, 1)))[0].min()
     uz = np.where(mask.any(axis=(0, 1)))[0].max() + 1
 
-    # Truncating the useful boxes
-    input_trunc = input[lx:ux, ly:uy, lz:uz]
-    labels_trunc = labels[lx:ux, ly:uy, lz:uz]
-
-    # Computing the center of mass in the truncated box, then adding the offset
     offset = np.array([lx, ly, lz], dtype=np.float32)
-    trunc_center = np.array(
-        center_of_mass(input_trunc, labels_trunc, index), 
-        dtype=np.float32
-    )
-    return offset + trunc_center
+
+    # Truncating the arrays to boxes
+    boxes = []
+    for arr in [mask, *arrays]:
+        box_arr = arr[lx:ux, ly:uy, lz:uz]
+        boxes.append(box_arr)
+    return offset, *boxes
 
 
 def compute_contacts_centers(
@@ -105,10 +116,10 @@ def compute_contacts_centers(
         ct_mask: np.ndarray,
         struct: np.ndarray
 ) -> np.ndarray:
-    """Extracts the coordinates of the electrodes contacts from the CT image.
-    First, atomic connected components are extracted from the mask using the
-    ultimate erosion algorithm. Then, the center of mass of each connected
-    component (weighted by the values in 'ct_grayscale') are computed.
+    """Extracts the coordinates of the electrodes contacts (centroids) from the 
+    CT image.First, atomic connected components are extracted from the mask 
+    using theultimate erosion algorithm. Then, the center of mass of each 
+    connected component (weighted by the values in 'ct_grayscale') are computed.
     
     ### Inputs:
     - ct_grayscale: an array of shape (L, M, N) that contains the full 
@@ -121,19 +132,37 @@ def compute_contacts_centers(
     ### Output:
     - contacts_com: an array of shape (NC,3) that contains the 3D coordinates 
     of all NC contacts identified."""
-    log("Computing ultimate erosion", erase=True)
-    ult_er = __binary_ultimate_erosion(ct_mask, struct)
-    labels, n_contacts = label(ult_er)
-    
-    contacts_com = []
-    for i in range(1, n_contacts+1):
-        log(f"Contact {i}/{n_contacts}", erase=True)
-        contacts_com.append(__opti_center_of_mass(ct_grayscale, labels, i))
 
-    all_contacts = np.stack(contacts_com, dtype=np.float32)
+    # Identifies the connected components of the mask.
+    # This is done so that, for each connected component, we only
+    # manipulate the smallest 3D arry that contains it, as to reduce
+    # the complexity of the algorithm
+    # (instead of dealing with the whole array)
+    #
+    # Normally, one connected component should represent one contact, a section
+    # of electrode, or sections of touching electrodes.
+    connected_comps_labels, n_comps = label(ct_mask)
+
+    centroids = []
+    for cc_id in range(1, n_comps+1):    # For each connected component (CC)
+        # Keeping only the smallest array that fully contains the CC (= box)
+        comp = (connected_comps_labels == cc_id)
+        cc_offset, box_cc, box_gray = __get_box(comp, ct_grayscale)
+        # Computing ultimate erosion in that reduced array (box)
+        ult_regions = __binary_ultimate_erosion(box_cc, struct)
+        # Computing the center of mass (= COM) of all ultimately reduced 
+        # regions in the CC
+        ult_regions_labels, nb_regions = label(ult_regions)
+        centers = center_of_mass(
+            box_gray, 
+            labels=ult_regions_labels, 
+            index=range(1, nb_regions+1))
+        # Adding the COM's to the results, while accounting for the box's
+        # offset within the big initial array
+        centroids.append(np.array(centers) + cc_offset)
+
+    all_centroids = np.concatenate(centroids, dtype=np.float32)
 
     # Sorting along arbitrary criterion to guarantee non-stochasting 
     # ordering of the contacts
-    a = all_contacts[np.lexsort(keys=all_contacts.T)]
-    print(a.shape)
-    return a
+    return all_centroids[np.lexsort(keys=all_centroids.T)]
