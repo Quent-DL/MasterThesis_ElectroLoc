@@ -75,6 +75,8 @@ class ElectrodePlotter:
             color: Optional[Tuple[int]] = None,
             size_multiplier: Optional[float] = 1) -> None:
         """TODO write documentation"""
+        if len(contacts) == 0:
+            return
         point_cloud = pv.PolyData(self.func_world2vox(contacts))
         self.plotter.add_points(
             point_cloud, 
@@ -121,7 +123,7 @@ class ElectrodePlotter:
             line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
             self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)
 
-    def plot_electrodes(self, models: List[ElectrodeModel]) -> None:
+    def plot_electrodes_models(self, models: List[ElectrodeModel]) -> None:
         if isinstance(models[0], LinearElectrodeModel):
             self.plot_linear_electrodes(models)
         elif isinstance(models[0], ParabolicElectrodeModel):

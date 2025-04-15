@@ -100,7 +100,7 @@ def main():
     plotter.update_focal_point(contacts.mean(axis=0))
     #plotter.plot_ct(ct_object.ct)
     plotter.plot_ct_electrodes(ct_object.mask)
-    plotter.plot_electrodes(models)
+    plotter.plot_electrodes_models(models)
     plotter.plot_colored_contacts(contacts, labels)
     plotter.plot_contacts(contacts[excess_dt_idx], color=(0,0,0), 
                           size_multiplier=2.5)
