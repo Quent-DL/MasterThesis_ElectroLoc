@@ -5,9 +5,20 @@ from mediator_interface import MediatorInterface
 
 from PyQt6.QtWidgets import (QWidget, 
                              QHBoxLayout, QVBoxLayout, 
-                             QLabel, QLineEdit, QPushButton, QFileDialog, QSpinBox)
-from PyQt6.QtGui import QIntValidator
+                             QLabel, QLineEdit, QPushButton, QFileDialog, 
+                             QDoubleSpinBox, QCheckBox, QSlider, QComboBox, 
+                             QStyle)
+from PyQt6.QtGui import QIntValidator, QIcon
+from PyQt6.QtCore import Qt
+import numpy as np
 from typing import Callable
+import os
+
+
+def get_icon_src(icon_name) -> str:
+    ICON_DIR = os.path.join(os.path.dirname(__file__), '..', 'img')
+    return os.path.join(ICON_DIR, icon_name)
+
 
 def create_QLineEdit(
         placeholder: str = "", 
@@ -66,51 +77,83 @@ class ElecLocExtractionPanel(QWidget):
 
         ## Input Nifti file and mask info
         layout.addWidget(QLabel(text="Path to input Nifti file [*]:"))
-        input_layout = QHBoxLayout()
+        layout_input = QHBoxLayout()
 
         self.w_inputCtPath = create_QLineEdit("e.g.: ./input_CT.nii.gz")
-        input_layout.addWidget(self.w_inputCtPath)
+        layout_input.addWidget(self.w_inputCtPath)
 
+        # TODO enhancement: autofill min and max thresholds placeholders
         input_button = QPushButton("Browse")
         input_button.clicked.connect(
             lambda: self._browse_file(self.w_inputCtPath))
-        input_layout.addWidget(input_button)
+        layout_input.addWidget(input_button)
 
-        layout.addLayout(input_layout)
+        layout.addLayout(layout_input)
 
         layout.addWidget(QLabel(text="Path to mask:"))
-        input_mask_layout = QHBoxLayout()
+        layout_input_mask = QHBoxLayout()
 
         self.w_inputMaskPath = create_QLineEdit("e.g.: ./mask.nii.gz")
-        input_mask_layout.addWidget(self.w_inputMaskPath)
+        layout_input_mask.addWidget(self.w_inputMaskPath)
 
         input_mask_button = QPushButton("Browse")
         input_mask_button.clicked.connect(
             lambda: self._browse_file(self.w_inputMaskPath))
-        input_mask_layout.addWidget(input_mask_button)
+        layout_input_mask.addWidget(input_mask_button)
 
-        layout.addLayout(input_mask_layout)
+        layout.addLayout(layout_input_mask)
 
         ## CT thresholds info
         layout.addWidget(QLabel(text="Thresholds (leave empty for automatic computation):"))
-        thresh_layout = QHBoxLayout()
+        layout_thresh = QHBoxLayout()
 
-        thresh_layout.addWidget(QLabel("Min:"))
+        layout_thresh.addWidget(QLabel("Min:"))
 
         self.w_threshMin = QLineEdit()
         self.w_threshMin.setValidator(QIntValidator())
-        thresh_layout.addWidget(self.w_threshMin)
+        layout_thresh.addWidget(self.w_threshMin)
         self.w_threshMin.setPlaceholderText("[Compute]")
         self.w_threshMin.setText("1500")
 
-        thresh_layout.addWidget(QLabel("Max:"))
+        layout_thresh.addWidget(QLabel("Max:"))
 
         self.w_threshMax = QLineEdit()
         self.w_threshMax.setValidator(QIntValidator())
-        thresh_layout.addWidget(self.w_threshMax)
+        layout_thresh.addWidget(self.w_threshMax)
         self.w_threshMax.setPlaceholderText("None")
 
-        layout.addLayout(thresh_layout)
+        layout.addLayout(layout_thresh)
+
+        
+        # Showing and adjusting opacity of CT scan
+        layout_display_input = QHBoxLayout()
+
+        self.w_showCt = QCheckBox("Show CT")
+        # TODO ESSENTIAL link callback
+        self.w_showCt.clicked.connect(lambda: None)
+        layout_display_input.addWidget(self.w_showCt)
+
+        self.w_opacityInput = QSlider(orientation=Qt.Orientation.Horizontal)
+        # TODO ESSENTIAL link callback
+        self.w_opacityInput.sliderReleased.connect(lambda: print("Released"))
+        layout_display_input.addWidget(self.w_opacityInput)
+
+        layout.addLayout(layout_display_input)
+
+        # Showing and adjusting opacity of mask
+        layout_display_mask = QHBoxLayout()
+
+        self.w_showMask = QCheckBox("Show mask")
+        # TODO ESSENTIAL link callback
+        self.w_showMask.clicked.connect(lambda: None)
+        layout_display_mask.addWidget(self.w_showMask)
+
+        self.w_opacityMask = QSlider(orientation=Qt.Orientation.Horizontal)
+        # TODO ESSENTIAL link callback
+        self.w_opacityMask.sliderReleased.connect(lambda: print("Released"))
+        layout_display_mask.addWidget(self.w_opacityMask)
+
+        layout.addLayout(layout_display_mask)
 
         ## Button to launch extraction
         launch_button = QPushButton("Extract centroids")
@@ -120,18 +163,21 @@ class ElecLocExtractionPanel(QWidget):
         # TODO ESSENTIAL
 
         # Part 2: Adjustments
-
-        ## Adding new centroid
-
-        ## Selecting/deleting centroid
-
-        ## Modifying position of centroid
+        self.w_centroid_menu = CentroidInfoPanel()
+        self.w_centroid_menu.setVisible(False)
+        layout.addWidget(self.w_centroid_menu)
 
         # Part 3: buttons to save results as CSV
+        # TODO
         ...
+
+        layout.addStretch()
 
     def add_mediator(self, mediator: MediatorInterface) -> None:
         self._mediator = mediator
+        # Propagates the addition of the mediator to the centroid menu,
+        # to define its callbacks
+        self.w_centroid_menu.setup_callbacks(mediator)
 
     #
     # Callback methods
@@ -172,6 +218,23 @@ class ElecLocExtractionPanel(QWidget):
             dlg = InfoDialog("Invalid argument", str(e))
             dlg.exec()
 
+    #
+    # API for mediator
+    #
+
+    def display_selected_centroid(self, coords: np.ndarray) -> None:
+        """Displays in the centroid menu the given coordinates. Shape (3,).
+        The coordinates are rounded to their 3rd decimals."""
+        x, y, z = np.round(coords, 3)
+        self.w_centroid_menu.w_centroid_x.setValue(x)
+        self.w_centroid_menu.w_centroid_y.setValue(y)
+        self.w_centroid_menu.w_centroid_z.setValue(z)
+        self.w_centroid_menu.setVisible(True)
+
+    def unselect(self) -> None:
+        """Defines the behaviour for when no centroid is selected. In this
+        implementation, the centroid menu is simply hidden."""
+        self.w_centroid_menu.setVisible(False)
 
     #
     # Helper methods
@@ -204,3 +267,104 @@ class ElecLocExtractionPanel(QWidget):
         widget.textChanged.connect(callback)
         
         return widget
+
+class CentroidInfoPanel(QWidget):
+    """This widget allows the user to display information about a set of
+    centroids, as well as modify them."""
+
+    # TODO ENHANCEMENT: allow float values
+
+    def __init__(self):
+        super().__init__()
+        self._init_UI()
+
+    def _init_UI(self) -> None:
+        layout = QVBoxLayout(self)
+
+        # Label and "add centroid" button
+        layout_title = QHBoxLayout()
+
+        layout_title.addWidget(QLabel("Centroid Menu"))
+
+        self.w_add_centroid = QPushButton()
+        # TODO see if useful
+        # self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
+        # TODO ESSENTIAL
+        self.w_add_centroid.setIcon(QIcon(get_icon_src("add")))
+        layout_title.addWidget(self.w_add_centroid)
+
+        layout.addLayout(layout_title)
+
+        # Centroids drop-down and delete button
+        layout_selection = QHBoxLayout()
+        
+        """# TODO keep or remove
+        self.w_combobox = QComboBox()
+        self.w_combobox.currentIndexChanged.connect(
+            lambda: self._mediator.select_centroid(
+                self.w_combobox.currentIndex))
+        layout_selection.addWidget(self.w_combobox)"""
+
+        self.w_delete_centroid = QPushButton()
+        self.w_delete_centroid.setIcon(QIcon(get_icon_src("trash")))
+        layout_selection.addWidget(self.w_delete_centroid)
+
+        layout.addLayout(layout_selection)
+
+        # Coordinates of the selected centroid
+        layout_coords = QHBoxLayout()
+        
+        # X
+        layout_coords.addWidget(QLabel("x"))
+        self.w_centroid_x = self._create_coords_box()
+        layout_coords.addWidget(self.w_centroid_x)
+        # Y
+        layout_coords.addWidget(QLabel("y"))
+        self.w_centroid_y = self._create_coords_box()
+        layout_coords.addWidget(self.w_centroid_y)
+        # Z
+        layout_coords.addWidget(QLabel("z"))
+        self.w_centroid_z = self._create_coords_box()
+        layout_coords.addWidget(self.w_centroid_z)
+
+        layout.addLayout(layout_coords)
+    
+    def setup_callbacks(self, mediator: MediatorInterface) -> None:
+        """Adds a callback to all the necessary widgets using the given
+        mediator object."""
+
+        def update_coords() -> None:
+            """Notifies the mediator that the coordinates of the selected centroid
+            have been modified."""
+            x = self.w_centroid_x.value()
+            y = self.w_centroid_y.value()
+            z = self.w_centroid_z.value()
+
+            coords = np.array([x, y, z], dtype=np.float32)
+            mediator.update_selected_centroid(coords)
+
+        self.w_add_centroid.released.connect(mediator.add_centroid)
+        self.w_delete_centroid.released.connect(
+            mediator.delete_selected_centroid)
+        
+        self.w_centroid_x.valueChanged.connect(update_coords)
+        self.w_centroid_y.valueChanged.connect(update_coords)
+        self.w_centroid_z.valueChanged.connect(update_coords)
+
+    def _create_coords_box(self) -> QDoubleSpinBox:
+        """Quickly creates a float quickbox with a callback to the mediator
+        when the value is changed"""
+        widget = QDoubleSpinBox()
+        widget.setRange(-1e9, 1e9)
+        widget.setSingleStep(1.0)
+        return widget
+
+    # TODO remove if useless
+    def _create_dropdown(self) -> QComboBox:
+        """Creates a combo box widget (i.e. drop down menu) with all the 
+        centroids ids"""
+        w_combobox = QComboBox()
+        w_combobox.currentIndexChanged.connect(
+            lambda: self._mediator.select_centroid(w_combobox.currentIndex))
+        
+    

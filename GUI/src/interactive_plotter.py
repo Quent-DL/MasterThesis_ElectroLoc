@@ -14,6 +14,7 @@ pv.global_theme.allow_empty_mesh = True
 class InteractivePlotter:
     def __init__(self):
         self._plotter = QtInteractor()
+        self._plotter.add_axes()
 
         # Adding callback for when a point is picked
         # -> delegating to mediator
@@ -73,6 +74,7 @@ class InteractivePlotter:
             render_points_as_spheres=True, pickable=True)
         self._plotter.remove_actor(old_actor)
 
+        self._plotter.reset_camera()
         self._plotter.render()
 
     def add_centroid(self, coords: np.ndarray) -> None:
@@ -83,7 +85,10 @@ class InteractivePlotter:
     def remove_centroid(self, index: int) -> None:
         """Removes the centroid with the specified index"""
         res =  np.delete(self._centroids_mesh.points, index, axis=0)
-        self.replot_centroids(res)
+        self._centroids_mesh.points = res
+        self._centroids_actor.mapper.Update()
+
+        #self.replot_centroids(res)
     
     def update_centroid(self, index: int, new_coords: np.ndarray) -> None:
         """Updates the position of one centroid.
@@ -93,10 +98,14 @@ class InteractivePlotter:
         - new_coords: its new coordinates. Shape (3,)."""
         self._centroids_mesh.points[index] = new_coords
         self._centroids_actor.mapper.Update()
+        self._selection_mesh.points[0] = new_coords
+        self._selection_actor.mapper.Update()
 
     def select(self, index: int) -> None:
         self._selection_mesh.points[0] = self._centroids_mesh.points[index]
         self._selection_actor.visibility = True
+        self._selection_actor.mapper.Update()
 
     def unselect(self) -> None:
         self._selection_actor.visibility = False
+        self._selection_actor.mapper.Update()
