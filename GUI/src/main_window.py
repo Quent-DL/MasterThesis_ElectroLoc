@@ -1,5 +1,6 @@
 from extraction_panel import ElecLocExtractionPanel
-#from interactive_plotter import InteractivePlotter
+from interactive_plotter import InteractivePlotter
+from mediator import Mediator
 
 from PyQt6.QtWidgets import QWidget, QMainWindow, QDialog, QHBoxLayout
 from PyQt6.QtGui import QAction
@@ -22,17 +23,18 @@ class BiViewer(QWidget):
 
     def _initUI(self):
         biviewer = QHBoxLayout()
-        self.w_extraction_panel = ElecLocExtractionPanel(self)
+        self.w_extraction_panel = ElecLocExtractionPanel()
         biviewer.addWidget(self.w_extraction_panel)
-        self.w_plotter = QtInteractor()  # TODO replace by custom wrapper below
-        #self.w_plotter = InteractivePlotter(self)   
-        biviewer.addWidget(self.w_plotter)
+        self._interactive_plotter = InteractivePlotter()  
+        biviewer.addWidget(self._interactive_plotter.get_widget())
         self.setLayout(biviewer)
 
-    def update_centroids(self, centroids: np.ndarray) -> None:
-        self._centroids = centroids
-
-        # TODO plot centroids in self.w_plotter
+        # Adding a mediator to allow indirect and coordinated communication
+        # between the panel extraction and the viewer
+        self.mediator = Mediator(self.w_extraction_panel,
+                                 self._interactive_plotter)
+        self.w_extraction_panel.add_mediator(self.mediator)
+        self._interactive_plotter.add_mediator(self.mediator)
 
 
 class MainWindow(QMainWindow):
@@ -54,7 +56,3 @@ class MainWindow(QMainWindow):
         exitAction = QAction('Exit', self)
         exitAction.triggered.connect(self.close)
         fileMenu.addAction(exitAction)
-
-    def update_centroids(self, centroids: np.ndarray) -> None:
-        self._centroids = centroids
-        # TODO display change in viewer

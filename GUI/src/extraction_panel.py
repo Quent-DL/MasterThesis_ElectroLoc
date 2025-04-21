@@ -1,6 +1,7 @@
 from elecloc.main import extract_from_files
 
 from utils import InfoDialog
+from mediator_interface import MediatorInterface
 
 from PyQt6.QtWidgets import (QWidget, 
                              QHBoxLayout, QVBoxLayout, 
@@ -38,10 +39,8 @@ class ElecLocExtractionPanel(QWidget):
     # Core
     #
 
-    def __init__(self, parent_biviewer):
+    def __init__(self):
         super().__init__()
-
-        self.parent_biviewer = parent_biviewer
 
         self._updatable_children = {
             "inputCtPath" : None,
@@ -118,6 +117,8 @@ class ElecLocExtractionPanel(QWidget):
         launch_button.clicked.connect(self._launch_extraction)
         layout.addWidget(launch_button)
 
+        # TODO ESSENTIAL
+
         # Part 2: Adjustments
 
         ## Adding new centroid
@@ -127,8 +128,10 @@ class ElecLocExtractionPanel(QWidget):
         ## Modifying position of centroid
 
         # Part 3: buttons to save results as CSV
-
         ...
+
+    def add_mediator(self, mediator: MediatorInterface) -> None:
+        self._mediator = mediator
 
     #
     # Callback methods
@@ -162,12 +165,9 @@ class ElecLocExtractionPanel(QWidget):
                 int(min_str) if min_str != "" else None,
                 int(max_str) if max_str != "" else None
             )
-            self.parent_biviewer.update_centroids(centroids)
-
+            self._mediator.set_centroids(centroids)
             dlg = InfoDialog("Success", f"Succesfully computed centroids.")
-
-            # TODO incomplete: replace by actually useful code
-            print(centroids)
+            
         except (ValueError, FileNotFoundError) as e:
             dlg = InfoDialog("Invalid argument", str(e))
             dlg.exec()
