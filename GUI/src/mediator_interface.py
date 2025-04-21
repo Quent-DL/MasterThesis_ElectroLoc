@@ -18,12 +18,10 @@ class MediatorInterface(ABC):
 
     @abstractmethod
     def add_centroid(self) -> None:
-        # TODO + select it (remove comment because interface here)
         pass
 
     @abstractmethod
     def delete_selected_centroid(self) -> None:
-        # TODO + select next (remove comment because interface here)
         pass
 
     @abstractmethod

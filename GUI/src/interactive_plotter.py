@@ -46,10 +46,6 @@ class InteractivePlotter:
 
         # TODO store actors (centroids + CT)
 
-        # TODO DEBUG REMOVE
-        """ctds = np.indices((2,2,2), dtype=np.float32).reshape(3, -1).T
-        self.replot_centroids(ctds)"""
-
     def get_widget(self) -> QtInteractor:
         return self._plotter
 

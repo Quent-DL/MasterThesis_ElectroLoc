@@ -6,8 +6,7 @@ from mediator_interface import MediatorInterface
 from PyQt6.QtWidgets import (QWidget, 
                              QHBoxLayout, QVBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QFileDialog, 
-                             QDoubleSpinBox, QCheckBox, QSlider, QComboBox, 
-                             QStyle)
+                             QDoubleSpinBox, QCheckBox, QSlider)
 from PyQt6.QtGui import QIntValidator, QIcon
 from PyQt6.QtCore import Qt
 import numpy as np
@@ -160,15 +159,13 @@ class ElecLocExtractionPanel(QWidget):
         launch_button.clicked.connect(self._launch_extraction)
         layout.addWidget(launch_button)
 
-        # TODO ESSENTIAL
-
         # Part 2: Adjustments
         self.w_centroid_menu = CentroidInfoPanel()
         self.w_centroid_menu.setVisible(False)
         layout.addWidget(self.w_centroid_menu)
 
         # Part 3: buttons to save results as CSV
-        # TODO
+        # TODO ESSENTIAL
         ...
 
         layout.addStretch()
@@ -272,8 +269,6 @@ class CentroidInfoPanel(QWidget):
     """This widget allows the user to display information about a set of
     centroids, as well as modify them."""
 
-    # TODO ENHANCEMENT: allow float values
-
     def __init__(self):
         super().__init__()
         self._init_UI()
@@ -287,9 +282,6 @@ class CentroidInfoPanel(QWidget):
         layout_title.addWidget(QLabel("Centroid Menu"))
 
         self.w_add_centroid = QPushButton()
-        # TODO see if useful
-        # self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
-        # TODO ESSENTIAL
         self.w_add_centroid.setIcon(QIcon(get_icon_src("add")))
         layout_title.addWidget(self.w_add_centroid)
 
@@ -297,13 +289,6 @@ class CentroidInfoPanel(QWidget):
 
         # Centroids drop-down and delete button
         layout_selection = QHBoxLayout()
-        
-        """# TODO keep or remove
-        self.w_combobox = QComboBox()
-        self.w_combobox.currentIndexChanged.connect(
-            lambda: self._mediator.select_centroid(
-                self.w_combobox.currentIndex))
-        layout_selection.addWidget(self.w_combobox)"""
 
         self.w_delete_centroid = QPushButton()
         self.w_delete_centroid.setIcon(QIcon(get_icon_src("trash")))
@@ -358,13 +343,5 @@ class CentroidInfoPanel(QWidget):
         widget.setRange(-1e9, 1e9)
         widget.setSingleStep(1.0)
         return widget
-
-    # TODO remove if useless
-    def _create_dropdown(self) -> QComboBox:
-        """Creates a combo box widget (i.e. drop down menu) with all the 
-        centroids ids"""
-        w_combobox = QComboBox()
-        w_combobox.currentIndexChanged.connect(
-            lambda: self._mediator.select_centroid(w_combobox.currentIndex))
         
     

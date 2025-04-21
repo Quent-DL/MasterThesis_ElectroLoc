@@ -17,10 +17,6 @@ class Mediator(MediatorInterface):
         self._centroids = np.empty((0,3), dtype=np.float32)
         self._index = -1
 
-        # TODO debug remove
-        """ctds = np.indices((2,2,2), dtype=np.float32).reshape(3, -1).T
-        self.set_centroids(ctds)"""
-
     def _hasSelected(self) -> bool:
         return self._index != -1 and self._index < len(self._centroids)
     
@@ -60,11 +56,7 @@ class Mediator(MediatorInterface):
 
         # Removing centroid from plotter
         self._interactive_plotter.remove_centroid(self._index)
-
-        """ TODO keep or delete
-        # Selecting "next" centroid (which is now at current index)
-        # Accounts for the case where the list is now empty (will select index -1)
-        self.select_centroid(min(self._index, len(self._centroids)-1))"""
+        
         self.unselect_centroid()
 
     def update_selected_centroid(self, new_coords):
