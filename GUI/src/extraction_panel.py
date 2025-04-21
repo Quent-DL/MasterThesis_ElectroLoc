@@ -1,7 +1,7 @@
 from elecloc.main import extract_from_files
 
-from utils import InfoDialog
-from mediator_interface import MediatorInterface
+from misc.info_dialog import InfoDialog
+from misc.mediator_interface import MediatorInterface
 
 from PyQt6.QtWidgets import (QWidget, 
                              QHBoxLayout, QVBoxLayout, 

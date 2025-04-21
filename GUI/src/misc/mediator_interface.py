@@ -13,10 +13,6 @@ class MediatorInterface(ABC):
         pass
 
     @abstractmethod
-    def get_centroids(self) -> np.ndarray:
-        pass
-
-    @abstractmethod
     def add_centroid(self) -> None:
         pass
 

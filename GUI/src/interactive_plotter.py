@@ -1,6 +1,6 @@
 """This class defines an interactive PyVista viewer"""
 
-from mediator_interface import MediatorInterface
+from misc.mediator_interface import MediatorInterface
 
 import numpy as np
 import pyvista as pv
@@ -70,7 +70,6 @@ class InteractivePlotter:
             render_points_as_spheres=True, pickable=True)
         self._plotter.remove_actor(old_actor)
 
-        self._plotter.reset_camera()
         self._plotter.render()
 
     def add_centroid(self, coords: np.ndarray) -> None:
@@ -78,7 +77,7 @@ class InteractivePlotter:
         res = np.append(self._centroids_mesh.points, coords[np.newaxis], axis=0)
         self.replot_centroids(res)
 
-    def remove_centroid(self, index: int) -> None:
+    def delete_centroid(self, index: int) -> None:
         """Removes the centroid with the specified index"""
         res =  np.delete(self._centroids_mesh.points, index, axis=0)
         self._centroids_mesh.points = res
