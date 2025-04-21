@@ -15,12 +15,14 @@ class InteractivePlotter:
     def __init__(self):
         self._plotter = QtInteractor()
 
-        # Adding callback for when a point is selected
-        self._plotter.enable_point_picking(self.callback_pick, 
-                                           show_message=False,
-                                           picker='point', 
-                                           use_picker=True,
-                                           show_point=False)
+        # Adding callback for when a point is picked
+        # -> delegating to mediator
+        self._plotter.enable_point_picking(
+            lambda _, pckr: self._mediator.select_centroid(pckr.GetPointId()),
+            show_message=False,
+            picker='point', 
+            use_picker=True,
+            show_point=False)
         
         # Initializing the centroids (plotting empty points cloud)
         self._centroids_mesh = pv.PolyData(np.zeros((0,3), dtype=float))
@@ -29,7 +31,7 @@ class InteractivePlotter:
         # Preparing the selection sphere
         self._selection_mesh = pv.PolyData(np.zeros((1,3), dtype=float))
         self._selection_actor = self._plotter.add_mesh(
-            self._selection_mesh, color=(255, 0, 0), point_size=12.5, 
+            self._selection_mesh, color=(255, 0, 0), point_size=8.5, 
             render_points_as_spheres=True, pickable=False)
         self._selection_actor.visibility = False
 
@@ -98,7 +100,3 @@ class InteractivePlotter:
 
     def unselect(self) -> None:
         self._selection_actor.visibility = False
-
-    def callback_pick(self, actor, picker):
-        centroid_id = picker.GetPointId()
-        self._mediator.select_centroid(centroid_id)
