@@ -52,7 +52,8 @@ class InteractivePlotter:
     def add_mediator(self, mediator: MediatorInterface) -> None:
         self._mediator = mediator
 
-    def replot_centroids(self, centroids: np.ndarray) -> None:
+    def replot_centroids(self, centroids: np.ndarray,
+                         keep_camera_pos: bool=False) -> None:
         """Clears the previous centroids, and plot the given ones instead.
         
         ### Input:
@@ -62,6 +63,9 @@ class InteractivePlotter:
         # Storing the centroids for later use 
         # (e.g. updating or removing a centroid)
         self._centroids_mesh = pv.PolyData(centroids)
+        
+        # Storing old camera position
+        old_cpos = self._plotter.camera_position
 
         # Replacing the actor, and removing the previous one
         old_actor = self._centroids_actor
@@ -70,18 +74,22 @@ class InteractivePlotter:
             render_points_as_spheres=True, pickable=True)
         self._plotter.remove_actor(old_actor)
 
+        if keep_camera_pos:
+            
+        # Storing old camera position
+            self._plotter.camera_position = old_cpos
+
         self._plotter.render()
 
     def add_centroid(self, coords: np.ndarray) -> None:
         """Adds a centroid at the specified coordinates (shape (3,))."""
         res = np.append(self._centroids_mesh.points, coords[np.newaxis], axis=0)
-        self.replot_centroids(res)
+        self.replot_centroids(res, keep_camera_pos=True)
 
     def delete_centroid(self, index: int) -> None:
         """Removes the centroid with the specified index"""
-        res =  np.delete(self._centroids_mesh.points, index, axis=0)
-        self._centroids_mesh.points = res
-        self._centroids_actor.mapper.Update()
+        res = np.delete(self._centroids_mesh.points, index, axis=0)
+        self.replot_centroids(res, keep_camera_pos=True)
 
         #self.replot_centroids(res)
     
