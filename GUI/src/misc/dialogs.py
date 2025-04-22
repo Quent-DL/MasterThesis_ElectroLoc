@@ -12,7 +12,19 @@ class InfoDialog(QDialog):
         self.buttonBox.accepted.connect(self.accept)
 
         layout = QVBoxLayout()
-        message = QLabel(text)
-        layout.addWidget(message)
+        layout.addWidget(QLabel(text))
         layout.addWidget(self.buttonBox)
         self.setLayout(layout)
+
+
+class SimpleDialog(QDialog):
+    """A very simple dialog that only displays one message
+    (e.g. to instruct the user to wait)."""
+
+    def __init__(self, text: str):
+        super().__init__()
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel(text))
+        self.setLayout(layout)
+

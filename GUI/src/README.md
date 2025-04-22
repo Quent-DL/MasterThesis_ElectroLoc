@@ -8,3 +8,4 @@
 - Unselect centroid when clicking twice on it
 - Fix the size of some widgets (e.g. add/delete centroid buttons)
 - Fix varying widget extraction panel size when the Centroid menu is shown or hidden
+- Dialogs to instruct the user to wait while loading nifti files or computing centroids

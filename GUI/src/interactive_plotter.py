@@ -6,6 +6,7 @@ import numpy as np
 import pyvista as pv
 from pyvistaqt import QtInteractor
 from pyvista.plotting.opts import ElementType
+from vtkmodules.vtkCommonDataModel import vtkPiecewiseFunction
 
 # Needed to plot an initially empty centroids mesh
 pv.global_theme.allow_empty_mesh = True
@@ -43,6 +44,14 @@ class InteractivePlotter:
                                "Scroll: zoom",
                                font_size=8,
                                font='courier')
+        
+        # Initializing the grayscale input (CT) (plotting empty volume)
+        # TODO keep or remove
+        """self._ct_actor = self._plotter.add_volume(
+            np.array([[[0, 1]]], dtype=float))
+        self._ct_actor.visibility = False"""
+        self._ct_actor = pv.Actor()
+        self._thresholded_actor = pv.Actor()
 
         # TODO store actors (centroids + CT)
 
@@ -51,6 +60,10 @@ class InteractivePlotter:
 
     def add_mediator(self, mediator: MediatorInterface) -> None:
         self._mediator = mediator
+
+    #
+    # Centroids
+    #
 
     def replot_centroids(self, centroids: np.ndarray) -> None:
         """Clears the previous centroids, and plot the given ones instead.
@@ -61,6 +74,10 @@ class InteractivePlotter:
 
         # Storing the centroids for later use 
         # (e.g. updating or removing a centroid)
+        
+        # increment by 0.5 to align points and volumes
+        centroids = centroids + 0.5
+
         self._centroids_mesh = pv.PolyData(centroids)
 
         # Replacing the actor, and removing the previous one
@@ -91,6 +108,7 @@ class InteractivePlotter:
         ### Inputs:
         - index: the id of the centroid
         - new_coords: its new coordinates. Shape (3,)."""
+        new_coords = new_coords + 0.5    # to align points and volumes
         self._centroids_mesh.points[index] = new_coords
         self._centroids_actor.mapper.Update()
         self._selection_mesh.points[0] = new_coords
@@ -104,3 +122,70 @@ class InteractivePlotter:
     def unselect(self) -> None:
         self._selection_actor.visibility = False
         self._selection_actor.mapper.Update()
+
+    #
+    # CT volumes
+    #
+
+    def plot_input_ct(self, masked_ct: np.ndarray) -> None:
+        """Plots the given CT volume and removes the previous one 
+        (if it exists). Input shape (L, W, H). """
+
+        """ TODO keep this version or version below
+        vol = pv.ImageData()
+        vol.dimensions = np.array(ct.shape) + 1
+        vol.cell_data['values'] = ct.flatten(order='F')
+        self.plotter.add_volume(vol, cmap="gray", opacity=[0,0.045/5])"""
+
+        old_actor = self._ct_actor
+        self._ct_actor = self._plotter.add_volume(
+            masked_ct, cmap='gray', 
+            # opacity=[0.0, opacity],     TODO keep or remove
+            show_scalar_bar=False, pickable=False)
+        self._plotter.remove_actor(old_actor)
+
+        self.ct_min = masked_ct.min()
+        self.ct_max = masked_ct.max()
+
+        self._plotter.render()   # TODO see if useful
+
+    def update_ct_display(self, visibility: bool, opacity: float) -> None:
+        # TODO visibility doesn't work
+        self._ct_actor.visibility = visibility
+        #self._ct_actor.prop.SetOpacity(opacity)    TODO remove
+        self._change_volume_opacity(
+            self._ct_actor, self.ct_min, self.ct_max, opacity)
+        self._ct_actor.mapper.Update()
+
+    def plot_thresholded(self, thresholded_mask: np.ndarray) -> None:
+        """Plots the given binary mask volume and removes the previous one 
+        (if it exists). Input shape (L, W, H). """
+
+        mesh = pv.wrap(thresholded_mask)
+        mesh.cell_data['intensity'] = thresholded_mask[:-1, :-1, :-1].flatten(order='F')
+        vol = mesh.threshold(value=1, scalars='intensity')
+
+        old_actor = self._thresholded_actor
+        # TODO remove scalar bar
+        self._thresholded_actor = self._plotter.add_mesh(
+            vol, cmap='Blues', scalars='intensity', 
+            # opacity=0.075     TODO keep or remove
+            )
+        self._plotter.remove_actor(old_actor)
+
+        self._plotter.render()    # TODO see if useful
+
+    def update_thresholded_display(self, visibility: bool, opacity: float) -> None:
+        self._thresholded_actor.visibility = visibility
+        self._thresholded_actor.GetProperty().opacity = opacity
+        #self._thresholded_actor.mapper.Update()
+
+    # TODO remove useless function (only used once)
+    def _change_volume_opacity(self, actor: pv.Actor, 
+                               min_vol: float, max_vol: float, opacity: float):
+        #opacity_function = vtkPiecewiseFunction()
+        #opacity_function.AddPoint(min_vol, 0.0)
+        #opacity_function.AddPoint(max_vol, opacity)
+
+        # TODO debug remove
+        actor.GetProperty().opacity_unit_distance = opacity

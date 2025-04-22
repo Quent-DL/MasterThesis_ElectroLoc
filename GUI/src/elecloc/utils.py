@@ -82,8 +82,9 @@ class NibCTWrapper:
         
         ### Inputs:
         - ct_path: the path to a '.nii.gz' file that contains a CT scan.
+        Mandatory.
         - ct_brainmask_path: the path to a '.nii.gz' file that contains 
-        a binary mask of the brain (and optionally skull).
+        a binary mask of the brain (and optionally skull). Optional.
         
         ### Raises:
         - FileNotFoundError if either path given does not exist.
@@ -91,24 +92,11 @@ class NibCTWrapper:
         - ValueError if the volumes stored in 'ct_path' and 'ct_brainmask_path'
         have different shapes."""
         # Checks
-        def check_path(path: str):
-            """Raises an exception if path invalid."""
-            if not os.path.exists(path):
-                raise FileNotFoundError("File:\n"
-                                        f"'{path}'\n"
-                                        "not found.")
-            if path[-7:] != '.nii.gz':
-                raise ValueError("The file:\n" 
-                                 f"{path}\n"
-                                 "is not a Nifti file " 
-                                "(should end with '.nii.gz').")
-            
         ct_path = ct_path.strip()
-        check_path(ct_path)
+        NibCTWrapper.test_path(ct_path)
 
-        if not ct_brainmask_path in [None, ""]:
-            ct_brainmask_path = ct_brainmask_path.strip()
-            check_path(ct_brainmask_path)
+        ct_brainmask_path = ct_brainmask_path.strip()
+        NibCTWrapper.test_path(ct_brainmask_path, allow_empty=True)
             
         # Loading Nibabel CT
         nib_ct = nib.load(ct_path)
@@ -133,16 +121,49 @@ class NibCTWrapper:
         # to account for those different voxel side lengths
         self.affine = nib_ct.affine
 
+    @classmethod
+    def test_path(cls, path: str, allow_empty: bool=False) -> None:
+        """Checks the validity of the specified path (i.e. it exists
+        and is a '.nii.gz' file). Raises an exception otherwise.
+
+        ### Inputs:
+        - path: the path to check.
+        - allow_empty: whether an empty string passes the test. Use this
+        to check the optional mask path, but ignore this parameter for the
+        mandatory input path.
+        
+        ### Raises:
+        - FileNotFoundError if the path doesn't exist.
+        - ValueError if the path points to a file that does not
+        have extension '.nii.gz'."""
+        if allow_empty and path in ("", None):
+            return
+
+        if not os.path.exists(path):
+            raise FileNotFoundError("File:\n"
+                                    f"'{path}'\n"
+                                    "not found.")
+        if path[-7:] != '.nii.gz':
+            raise ValueError("The file:\n" 
+                                f"{path}\n"
+                                "is not a Nifti file " 
+                            "(should end with '.nii.gz').")
+
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
     
     def apply_threshold(self, min: Optional[float], 
-                        max: Optional[float]) -> None:
-        """Applies the specified thresholds to the mask of this object.
-        The thresholds are applied in place.
+                        max: Optional[float]) -> np.ndarray:
+        """Applies the specified thresholds to the CT of this object,
+        then the logical 'and' operator with the mask, then returns
+        the result.
         
         ### Inputs:
         - min, max: the optional thresholds to apply.
+
+        ### Returns:
+        - thresh_mask: the logical 'and' operator between the mask
+        and the filtered CT.
         
         ### Raises:
         - ValueError if max > min, or CT < min, or max < CT."""
@@ -160,7 +181,7 @@ class NibCTWrapper:
             raise ValueError("Max threshold cannot be smaller than min threshold.")
 
         filter = (min <= self.ct) & (self.ct <= max)
-        self.mask &= filter
+        return self.mask & filter
 
     def __apply_affine(
             self,

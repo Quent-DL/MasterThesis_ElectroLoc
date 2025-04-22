@@ -24,13 +24,12 @@ def extract_from_files(
     
     # TODO add "Raises" section"""
 
-
     ct_object = utils.NibCTWrapper(ct_path, mask_path)
-    ct_object.apply_threshold(thresh_min, thresh_max)
+    thresh_mask = ct_object.apply_threshold(thresh_min, thresh_max)
 
     return contacts_isolation.compute_contacts_centers(
             ct_grayscale=ct_object.ct, 
-            ct_mask=ct_object.mask, 
+            ct_mask=thresh_mask, 
             struct=contacts_isolation.__get_structuring_element('cross')
     )
 

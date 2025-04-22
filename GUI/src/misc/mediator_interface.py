@@ -33,5 +33,26 @@ class MediatorInterface(ABC):
         pass
 
     @abstractmethod
-    def replot_ct(self, ct: np.ndarray[float], opacity: float) -> None:
+    def load_plot_ct_volumes(self, ct_path: str, mask_path: str) -> bool:
+        """Tries to load the given Nifti files. Returns True if the
+        operation is successful, and False otherwise."""
+        pass
+
+    @abstractmethod
+    def update_ct_display(self, visibility: bool, opacity: float) -> None:
+        pass
+
+    
+    @abstractmethod
+    def plot_thresholded_volume(
+            self, threshMin: float, threshMax: float,
+            visibility: bool, opacity: float) -> None:
+        """Plots a new volume with the given threshold"""
+        pass
+
+    @abstractmethod
+    def update_thresholded_display(
+            self, visibility: bool, opacity: float) -> None:
+        """Difference with plot_thresholded_volume: only affects
+        visibility and opacity, not thresholds"""
         pass

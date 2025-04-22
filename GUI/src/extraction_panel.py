@@ -1,9 +1,9 @@
 from elecloc.main import extract_from_files
 
-from misc.info_dialog import InfoDialog
+from misc.dialogs import InfoDialog, SimpleDialog
 from misc.mediator_interface import MediatorInterface
 
-from PyQt6.QtWidgets import (QWidget, 
+from PyQt6.QtWidgets import (QWidget, QDialog,
                              QHBoxLayout, QVBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QFileDialog, 
                              QDoubleSpinBox, QCheckBox, QSlider)
@@ -39,7 +39,7 @@ def create_QLineEdit(
     widget = QLineEdit(parent)
     widget.setPlaceholderText(placeholder)
     widget.displayText()
-    widget.textChanged.connect(callback)
+    widget.editingFinished.connect(callback)
     return widget
 
 
@@ -52,18 +52,6 @@ class ElecLocExtractionPanel(QWidget):
     def __init__(self):
         super().__init__()
 
-        self._updatable_children = {
-            "inputCtPath" : None,
-            "inputMaskPath" : None,
-            "threshMin": None,
-            "threshMax": None,
-
-            "toggle_view_ct": None,
-            "toggle_view_thresholded": None,
-            "opacity_nifti": 0.2,
-            "opactity_thresholded": 0.5,
-        }
-
         # Adding the children widgets
         self._children = {}
         self._init_widgets()
@@ -72,7 +60,7 @@ class ElecLocExtractionPanel(QWidget):
         """Adds all the children widgets to this panel"""
         layout = QVBoxLayout(self)
 
-        # Part 1: Core algorithm
+        # Part 1: Loading CT
 
         ## Input Nifti file and mask info
         layout.addWidget(QLabel(text="Path to input Nifti file [*]:"))
@@ -102,64 +90,16 @@ class ElecLocExtractionPanel(QWidget):
 
         layout.addLayout(layout_input_mask)
 
-        ## CT thresholds info
-        layout.addWidget(QLabel(text="Thresholds (leave empty for automatic computation):"))
-        layout_thresh = QHBoxLayout()
+        self.w_buttonLoadCt = QPushButton("Load files")
+        self.w_buttonLoadCt.clicked.connect(self._load_ct)
+        layout.addWidget(self.w_buttonLoadCt)
 
-        layout_thresh.addWidget(QLabel("Min:"))
+        ## Part 2: CT thresholds info and extraction launcher
+        self.w_ctInfo = InformationCT()
+        self.w_ctInfo.setVisible(False)
+        layout.addWidget(self.w_ctInfo)
 
-        self.w_threshMin = QLineEdit()
-        self.w_threshMin.setValidator(QIntValidator())
-        layout_thresh.addWidget(self.w_threshMin)
-        self.w_threshMin.setPlaceholderText("[Compute]")
-        self.w_threshMin.setText("1500")
-
-        layout_thresh.addWidget(QLabel("Max:"))
-
-        self.w_threshMax = QLineEdit()
-        self.w_threshMax.setValidator(QIntValidator())
-        layout_thresh.addWidget(self.w_threshMax)
-        self.w_threshMax.setPlaceholderText("None")
-
-        layout.addLayout(layout_thresh)
-
-        
-        # Showing and adjusting opacity of CT scan
-        layout_display_input = QHBoxLayout()
-
-        self.w_showCt = QCheckBox("Show CT")
-        # TODO ESSENTIAL link callback
-        self.w_showCt.clicked.connect(lambda: None)
-        layout_display_input.addWidget(self.w_showCt)
-
-        self.w_opacityInput = QSlider(orientation=Qt.Orientation.Horizontal)
-        # TODO ESSENTIAL link callback
-        self.w_opacityInput.sliderReleased.connect(lambda: print("Released"))
-        layout_display_input.addWidget(self.w_opacityInput)
-
-        layout.addLayout(layout_display_input)
-
-        # Showing and adjusting opacity of mask
-        layout_display_mask = QHBoxLayout()
-
-        self.w_showMask = QCheckBox("Show mask")
-        # TODO ESSENTIAL link callback
-        self.w_showMask.clicked.connect(lambda: None)
-        layout_display_mask.addWidget(self.w_showMask)
-
-        self.w_opacityMask = QSlider(orientation=Qt.Orientation.Horizontal)
-        # TODO ESSENTIAL link callback
-        self.w_opacityMask.sliderReleased.connect(lambda: print("Released"))
-        layout_display_mask.addWidget(self.w_opacityMask)
-
-        layout.addLayout(layout_display_mask)
-
-        ## Button to launch extraction
-        launch_button = QPushButton("Extract centroids")
-        launch_button.clicked.connect(self._launch_extraction)
-        layout.addWidget(launch_button)
-
-        # Part 2: Adjustments
+        # Part 3: Adjustments
         self.w_centroid_menu = CentroidInfoPanel()
         self.w_centroid_menu.setVisible(False)
         layout.addWidget(self.w_centroid_menu)
@@ -175,6 +115,7 @@ class ElecLocExtractionPanel(QWidget):
         # Propagates the addition of the mediator to the centroid menu,
         # to define its callbacks
         self.w_centroid_menu.setup_callbacks(mediator)
+        self.w_ctInfo.setup_callbacks(mediator)
 
     #
     # Callback methods
@@ -197,23 +138,25 @@ class ElecLocExtractionPanel(QWidget):
         if filePath != "":
             widget.setText(filePath)
 
-    def _launch_extraction(self) -> None:
-        min_str = self.w_threshMin.text()
-        max_str = self.w_threshMax.text()
-        try:
-            # TODO enhancement: progress bar
-            centroids = extract_from_files(
-                self.w_inputCtPath.text(),
-                self.w_inputMaskPath.text(),
-                int(min_str) if min_str != "" else None,
-                int(max_str) if max_str != "" else None
-            )
-            self._mediator.set_centroids(centroids)
-            dlg = InfoDialog("Success", f"Succesfully computed centroids.")
-            
-        except (ValueError, FileNotFoundError) as e:
-            dlg = InfoDialog("Invalid argument", str(e))
-            dlg.exec()
+    def _load_ct(self) -> None:
+        """Loads the CT files in the QEditLine widgets."""
+        ct_path = self.w_inputCtPath.text().strip()
+        mask_path = self.w_inputMaskPath.text().strip()
+
+        # Temporarily disabling button
+        self.w_buttonLoadCt.setEnabled(False)
+        old_text = self.w_buttonLoadCt.text()
+        self.w_buttonLoadCt.setText("Loading files, wait...")
+
+        # TODO enhancement: loading dialog
+
+        success = self._mediator.load_plot_ct_volumes(ct_path, mask_path)
+        if success:
+            self.w_ctInfo.setVisible(True)
+        # Do nothing if load failed
+
+        self.w_buttonLoadCt.setEnabled(True)
+        self.w_buttonLoadCt.setText(old_text)
 
     #
     # API for mediator
@@ -233,38 +176,154 @@ class ElecLocExtractionPanel(QWidget):
         implementation, the centroid menu is simply hidden."""
         self.w_centroid_menu.setVisible(False)
 
-    #
-    # Helper methods
-    #
 
-    def _linked_QLineEdit(
-            self,
-            param_name: str,
-            placeholder: str = "",
-            parent: QWidget = None
-    ) -> QLineEdit:
-        """Quick method to create a QLineEdit widget whose value is linked
-        to the given parameter.
         
-        ### Inputs:
-        - param_name: the name of the parameters in 'self._params' linked to
-        the value in this QLineEdit widget.
-        - placeholder: the text to display when the widget is empty.
-        
-        ### Output:
-        - widget: the specified QLineEdit."""
-        # Widget
-        widget = QLineEdit(parent)
-        # Placeholder text
-        widget.setPlaceholderText(placeholder)
-        widget.displayText()
-        # Callback
-        def callback():
-            self._params[param_name] = widget.text
-        widget.textChanged.connect(callback)
-        
-        return widget
+class InformationCT(QWidget):
+    """A widget with various children to modify the display of the CT."""
 
+    def __init__(self):
+        super().__init__()
+        self._init_UI()
+
+    def _init_UI(self) -> None:
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel(text="Thresholds (leave empty for automatic computation):"))
+        layout_thresh = QHBoxLayout()
+
+        layout_thresh.addWidget(QLabel("Min:"))
+
+        self.w_threshMin = QLineEdit()
+        self.w_threshMin.setValidator(QIntValidator())
+        layout_thresh.addWidget(self.w_threshMin)
+        self.w_threshMin.setPlaceholderText("[Compute]")
+        self.w_threshMin.setText("1500")
+
+        layout_thresh.addWidget(QLabel("Max:"))
+
+        self.w_threshMax = QLineEdit()
+        self.w_threshMax.setValidator(QIntValidator())
+        layout_thresh.addWidget(self.w_threshMax)
+        self.w_threshMax.setPlaceholderText("None")
+
+        layout.addLayout(layout_thresh)
+
+        # Showing and adjusting opacity of CT scan
+        layout_display_input = QHBoxLayout()
+
+        self.w_showCt = QCheckBox("Show CT")
+        self.w_showCt.setChecked(True)
+        layout_display_input.addWidget(self.w_showCt)
+
+        self.w_opacityInput = InformationCT.OpacitySlider()
+        layout_display_input.addWidget(self.w_opacityInput)
+
+        layout.addLayout(layout_display_input)
+
+        # Showing and adjusting opacity of mask
+        layout_display_mask = QHBoxLayout()
+
+        self.w_showMask = QCheckBox("Show mask")
+        layout_display_mask.addWidget(self.w_showMask)
+
+        self.w_opacityMask = InformationCT.OpacitySlider()
+        layout_display_input.addWidget(self.w_opacityMask)
+
+        layout.addLayout(layout_display_mask)
+
+        ## Button to launch extraction
+        self.w_launchButton = QPushButton("Extract centroids")
+        layout.addWidget(self.w_launchButton)
+
+        # Global layout
+        layout.addStretch()
+
+    def setup_callbacks(self, mediator: MediatorInterface) -> None:
+        """Adds a callback to all the necessary widgets using the given
+        mediator object."""
+    
+        def _launch_extraction() -> None:
+            min_str = self.w_threshMin.text()
+            threshMin = int(min_str) if min_str != "" else None
+            max_str = self.w_threshMax.text()
+            threshMax = int(max_str) if max_str != "" else None
+
+            self.w_launchButton.setEnabled(False)
+            old_text = self.w_launchButton.text()
+            self.w_launchButton.setText("Computing, wait...")
+
+            try:
+                # TODO enhancement: progress bar
+
+                centroids = extract_from_files(
+                    self.w_inputCtPath.text(),
+                    self.w_inputMaskPath.text(),
+                    threshMin,
+                    threshMax
+                )
+                mediator.set_centroids(centroids)
+                dlg_success = InfoDialog("Success", f"Succesfully computed centroids.")
+                dlg_success.exec()
+                
+            except (ValueError, FileNotFoundError) as e:
+                dlg_fail = InfoDialog("Invalid argument", str(e))
+                dlg_fail.exec()
+
+            self.w_launchButton.setEnabled(True)
+            self.w_launchButton.setText(old_text)
+
+        def _update_ct_options():
+            visibilityCt = self.w_showCt.isChecked()
+            opacityCt = self.w_opacityInput.value()
+            mediator.update_ct_display(visibilityCt, opacityCt)
+
+        def _replot_thresholded():
+            min_str = self.w_threshMin.text()
+            threshMin = int(min_str) if min_str != "" else None
+            max_str = self.w_threshMax.text()
+            threshMax = int(max_str) if max_str != "" else None
+
+            visibilityMask = self.w_showMask.isChecked()
+            opacityMask = self.w_opacityMask.value()
+            mediator.plot_thresholded_volume(
+                threshMin, threshMax, visibilityMask, opacityMask)
+        
+        def _update_thresholded_options():
+            mediator.update_thresholded_display(
+            visibility = self.w_showMask.isChecked(),
+            opacity = self.w_opacityMask.value())
+
+        self.w_launchButton.clicked.connect(_launch_extraction)
+
+        # Modifying the thresholds
+        self.w_threshMin.editingFinished.connect(_replot_thresholded)
+        self.w_threshMax.editingFinished.connect(_replot_thresholded)
+
+        # Toggle view volumes
+        self.w_showCt.checkStateChanged.connect(_update_ct_options)
+        self.w_showMask.checkStateChanged.connect(_update_thresholded_options)
+
+        # Opacity volumes
+        self.w_opacityInput.sliderReleased.connect(_update_ct_options)
+        self.w_opacityMask.sliderReleased.connect(_update_thresholded_options)
+
+    class OpacitySlider(QSlider):
+        """A slider to define a floating point value opacity"""
+        NB_STEPS = 20
+
+        def __init__(self):
+            super().__init__()
+            self.setOrientation(Qt.Orientation.Horizontal)
+            self.setRange(0, self.NB_STEPS)
+            self.setTickInterval(1)
+            self.setSingleStep(1)
+            self.setSliderPosition(10)
+    
+        # Override
+        def value(self) -> float:
+            return super().value() / self.NB_STEPS
+        
+        
 class CentroidInfoPanel(QWidget):
     """This widget allows the user to display information about a set of
     centroids, as well as modify them."""
@@ -344,4 +403,3 @@ class CentroidInfoPanel(QWidget):
         widget.setSingleStep(1.0)
         return widget
         
-    

@@ -20,6 +20,10 @@ class Mediator(MediatorInterface):
 
         self._index = -1
 
+    #
+    # Centroids
+    #
+
     def _hasSelected(self) -> bool:
         return (self._index != -1 
                 and self._index < self._dc.nb_centroids())
@@ -38,7 +42,7 @@ class Mediator(MediatorInterface):
     
     def add_centroid(self):
         if self._hasSelected():
-            coords = self._getSelected() + np.array([0,0,1])
+            coords = self._getSelected() + np.array([0,0,2])
         else:
             coords = self._dc.get_centroids().mean(axis=0)      # Shape (3,).
 
@@ -87,6 +91,41 @@ class Mediator(MediatorInterface):
         self._interactive_plotter.unselect()
         self._extraction_panel.unselect()
 
-    
     def replot_ct(self, ct, opacity):
         self._interactive_plotter.plot_input_ct(ct, opacity)
+
+    #
+    # CT volumes
+    #
+
+    def load_plot_ct_volumes(self, ct_path, mask_path) -> bool:
+    
+        # Do nothing if invalid ct object
+        if not self._dc.try_load_ct_object(ct_path, mask_path):
+            return False
+        
+        # -> Load was sucessful
+        ct_object = self._dc.get_ct_object()
+
+        # Applying the mask and removing anything outside it
+        ct = ct_object.ct
+        ct[np.logical_not(ct_object.mask)] = ct.min()
+
+        # Plotting the CT
+        self._interactive_plotter.plot_input_ct(ct)
+        return True
+
+    def update_ct_display(self, visibility, opacity):
+        # Forward the call to plotter
+        self._interactive_plotter.update_ct_display(visibility, opacity)
+
+    def plot_thresholded_volume(self, threshMin, threshMax,
+                                visibility, opacity):
+        # Get the thresholded volume the forward the call
+        thresholded = self._dc.get_ct_object().apply_threshold(threshMin, 
+                                                               threshMax)
+        self._interactive_plotter.plot_thresholded(thresholded)
+
+    def update_thresholded_display(self, visibility, opacity):
+        self._interactive_plotter.update_thresholded_display(
+            visibility, opacity)
