@@ -42,11 +42,7 @@ __COLOR_PALETTE = [
 
 def get_color(i: int) -> tuple:
     # Choosing color, or new random color if there are many electrodes
-    if i < len(__COLOR_PALETTE):
-        color = __COLOR_PALETTE[i]
-    else:
-        # random electrode color
-        color = [random.randint(0,255) for _ in range(3)]       
+    color = __COLOR_PALETTE[i % len(__COLOR_PALETTE)]     
     return color 
 
 
