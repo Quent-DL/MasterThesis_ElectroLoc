@@ -1,8 +1,8 @@
 # Local modules
 import utils
 from utils import log
-import contacts_isolation
-import segmentation_multimodel
+import ElecLoc.src.centroids_extraction as centroids_extraction
+import ElectrodesLocalization.src.classification as classification
 import postprocessing
 import validation
 import plot
@@ -54,10 +54,10 @@ def main():
     if output_csv.are_raw_contacts_available():
         contacts = output_csv.load_raw_contacts()
     else:
-        contacts = contacts_isolation.compute_contacts_centers(
+        contacts = centroids_extraction.compute_contacts_centers(
                 ct_grayscale=ct_object.ct, 
                 ct_mask=ct_object.mask, 
-                struct=contacts_isolation.__get_structuring_element('cross')
+                struct=centroids_extraction.__get_structuring_element('cross')
         )
         # Caching the results
         output_csv.save_raw_contacts(contacts)
@@ -71,7 +71,7 @@ def main():
 
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels, models = segmentation_multimodel.segment_electrodes(
+    labels, models = classification.segment_electrodes(
         contacts, N_ELECTRODES, 
         model_cls=LinearElectrodeModel)
 

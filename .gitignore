@@ -9,7 +9,7 @@ __pycache__
 
 # Ignore work-in-progress files
 *.ipynb
-
+prototypes
 
 # Unwanted folders
 0_Organizing_the_dataset
