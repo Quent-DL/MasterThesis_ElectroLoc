@@ -2,8 +2,7 @@
 
 from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
                               ParabolicElectrodeModel)
-from postprocessing import __estimate_intercontact_distance
-from utils import log
+from utils import log, __estimate_intercontact_distance
 
 import numpy as np
 from numpy import cross

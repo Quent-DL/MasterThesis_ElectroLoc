@@ -100,58 +100,6 @@ def __get_electrodes_contacts_ids(
     return contacts_ids
 
 
-def __estimate_intercontact_distance(
-        contacts: np.ndarray
-) -> Tuple[float, float]:
-    """Returns an estimate of the inter-contact distance based on an histogram.
-    This function computes the distance matrix of the contacts, then computes
-    an estimate of the average smallest distance between two contacts 
-    (ignoring outliers with unnaturally small distances).
-    
-    ### Input:
-    - contacts: an array of shape (N, 3) that contains the 3D coordinates of
-    all the contacts detected in the CT.
-    
-    ### Outputs:
-    - dist: an estimate of the inter-contact distance.
-    - dist_std: the standard deviation of the distance between each contact
-    and its closest neighbor."""
-    # Distance matrix of the contacts. Shape (N, N)
-    distance_map = utils.distance_matrix(contacts)
-    # Ensuring that the closest detected neighbor of a contact isn't itself.
-    distance_map[distance_map==0] = distance_map.max()
-
-    # For each contact, the index of its closest neighbor + distance. Shape (N,)
-    neigh_1 = distance_map.argmin(axis=1)
-    dist_1  = distance_map[range(len(distance_map)), neigh_1]
-
-    # For each contact, the distance to its 2nd closest neighbor. Shape (N,).
-    # -> invalidating 1st closest neighbor
-    distance_map[range(len(distance_map)), neigh_1] = distance_map.max()
-    dist_2 = distance_map.min(axis=1)
-
-    # A list of all the distances between a contact and its closest neighbors.
-    # Shape (2N,)
-    distances_neigh = np.concatenate([dist_1, dist_2])
-
-    # TODO don't only take closest pairs (bias towards small intercontact distance)
-    # ==> Also use 2nd closest
-
-    # Identifying the mode of the histogram
-    step = 0.2
-    bins = np.arange(0, distances_neigh.max()+step, step)
-    hist, _ = np.histogram(distances_neigh, bins)
-    mode = hist.argmax()    # index of the modal bin
-
-    # Applying mean to modal bin and neighboring bins (IF not on border)
-    bin_min = max(0, mode-1)
-    bin_max = min(len(bins)-1, mode+2)
-    dist = distances_neigh[
-        (bins[bin_min] < distances_neigh) 
-        & (distances_neigh < bins[bin_max])].mean()
-
-    return dist
-
 def __match_labels(
         entry_points: np.ndarray,
         old_models: List[ElectrodeModel],
@@ -286,7 +234,7 @@ def postprocess(
     """TODO write documentation"""
 
     if intercontact_distance is None:
-        intercontact_distance = __estimate_intercontact_distance(contacts)
+        intercontact_distance = utils.__estimate_intercontact_distance(contacts)
 
     # ...
 
