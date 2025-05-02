@@ -2,7 +2,7 @@
 
 from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
                               ParabolicElectrodeModel)
-from utils import log, __estimate_intercontact_distance
+from utils import log, estimate_intercontact_distance
 
 import numpy as np
 from numpy import cross
@@ -43,6 +43,42 @@ def __get_K_nearest_neighbors(contacts: np.ndarray, k:int) -> List[np.ndarray]:
         distance_map[range(n), closest_indices] = UNPICKABLE
 
     return np.stack(neighbors)
+
+
+def __compute_models_distances_matrix(
+        models: List[SegmentElectrodeModel]) -> np.ndarray:
+    """Computes the distances between each pair of models,
+    weighted as a function of their relative angle"""
+    global intercontact_dist
+
+    n_models = len(models)
+    distances = np.zeros((n_models, n_models), dtype=float)
+
+    M = 5    # Max value of coeff (in range [1, M])
+    
+    for i, model_i in enumerate(models):
+        xi_a, xi_b = model_i.get_segment_nodes()
+        distances[i,i] = 0
+        for j, model_j in enumerate(models[i+1:]):
+            j += i+1    # To align with actual value of j, not the one in enumerate
+            xj_a, xj_b = model_j.get_segment_nodes()
+            dist_ij = np.min([
+                norm(xi_a - xj_a),
+                norm(xi_a - xj_b),
+                norm(xi_b - xj_a),
+                norm(xi_b - xj_b),
+            ])
+            vi, vj = model_i.direction, model_j.direction
+            cosine = np.dot(vi, vj) / (norm(vi) * norm(vj))
+            coeff_ij = (M+1)/2 - (M-1)/2 * (2 * cosine**2 - 1)
+
+            #TODO remove debug
+            if (intercontact_dist + dist_ij) * coeff_ij == 0:
+                debug=0
+
+            distances[i, j] = (intercontact_dist + dist_ij) * coeff_ij
+            distances[j, i] = distances[i, j]
+    return distances
 
 
 def __compute_dissimilarity_matrix(
@@ -267,17 +303,14 @@ def __merge_two_most_similar_models(
 
     # Computing dissimilarity between all pairs of models (ignoring diagonal)
     n_models = len(models)
-    dissim_scores = __compute_dissimilarity_matrix(models, contacts, labels)
+    # TODO keep or delete
+    #dissim_scores = __compute_dissimilarity_matrix(models, contacts, labels)
+    dissim_scores = __compute_models_distances_matrix(models)
+
     dissim_scores[range(n_models),range(n_models)] = dissim_scores.max()
 
     # Selecting a pair of models to merge, and the size of their support
     i, j = np.unravel_index(dissim_scores.argmin(), dissim_scores.shape)
-    n_i = np.sum(labels==i)
-    n_j = np.sum(labels==j)
-
-    # Merging the models
-    # TODO keep or remove
-    # models[i].merge(models[j], n_i, n_j)
 
     # Deleting the two models, and recomputing a new one
     # from the orphan contacts
@@ -301,7 +334,7 @@ def __delete_unsupported_models(
     """TODO write documentation"""
     counts = np.bincount(labels, minlength=len(models))    # Shape (N_MODELS,)
     for k in range(len(models)-1, -1, -1):
-        if (counts[k] < models[k].MIN_SAMPLES 
+        if (counts[k] < 1 # models[k].MIN_SAMPLES  # TODO test uncomment
                 and len(models) > n_electrodes):
             __delete_model(models, k, labels)
     labels = __compute_labels(contacts, models)
@@ -372,10 +405,6 @@ def classify_electrodes(
         model_cls: Type[ElectrodeModel] = LinearElectrodeModel
 ) -> np.ndarray:
     """TODO write documentation"""
-
-    # TODO tweak hyperparams
-    # TODO instead of hard-coded nb of init models, compute one for each neighboring pair
-    n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     max_iter = 1000000
 
     global intercontact_dist
@@ -400,23 +429,22 @@ def classify_electrodes(
         iter += 1
         previous_labels[:] = labels[:]
 
-
-        print(f"Iter {iter}", end='\r')
-
         # Refining the models based on their spatial support
-        __recompute_models(contacts, models, labels)
+        # TODO keep or delete
+        #__recompute_models(contacts, models, labels)
 
         """models, labels = __delete_unsupported_models(
             models, labels, contacts, n_electrodes)
 
         models, labels = __merge_two_most_similar_models(
             models, labels, contacts, n_electrodes)
-        
-        models, labels = __delete_most_redundant_model(
+        """models, labels = __delete_most_redundant_model(
+            models, labels, contacts, n_electrodes)
+        models, labels = __delete_least_supported_model(
             models, labels, contacts, n_electrodes)"""
         
-        models, labels = __delete_least_supported_model(
-            models, labels, contacts, n_electrodes)
+        # TODO remove debug
+        log(f"Remaining models: {len(models):<5}", erase=True)
 
     if (iter == max_iter):
         raise RuntimeWarning("Max iteration reached while computing models.")

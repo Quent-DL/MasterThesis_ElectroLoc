@@ -678,7 +678,7 @@ class SegmentElectrodeModel(ElectrodeModel):
 
     # TODO see if useful (wrapper)
     def get_segment_nodes(self) -> Tuple[np.ndarray]:
-        """Returns the points delimiting the semgent."""
+        """Returns the points delimiting the segment."""
         x_a = self.get_sequence(1, self.t_a, 0, 1)
         x_b = self.get_sequence(1, self.t_b, 0, 1)
         return x_a, x_b
