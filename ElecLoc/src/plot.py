@@ -2,7 +2,9 @@
 This file is responsible for plotting the data and models
 """
 
-from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
+from electrode_models import (ElectrodeModel, 
+                              LinearElectrodeModel, 
+                              SegmentElectrodeModel,
                               ParabolicElectrodeModel)
 
 import pyvista as pv
@@ -117,7 +119,7 @@ class ElectrodePlotter:
                 point_cloud, color=color, point_size=8, 
                 render_points_as_spheres=True)
 
-    def plot_matches(self, matched_DT, matched_GT) -> None:
+    def plot_differences(self, matched_DT, matched_GT) -> None:
         """TODO write documentation"""
         for dt, gt in zip(matched_DT, matched_GT):
             line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
@@ -128,6 +130,8 @@ class ElectrodePlotter:
             self.plot_linear_electrodes(models)
         elif isinstance(models[0], ParabolicElectrodeModel):
             self.plot_parabolic_electrodes(models)
+        elif isinstance(models[0], SegmentElectrodeModel):
+            self.plot_segment_electrodes(models)
 
     def plot_linear_electrodes(
             self, models: List[LinearElectrodeModel]) -> None:
@@ -158,3 +162,13 @@ class ElectrodePlotter:
             x = model_plot.compute_position_at_t(t)
             spline = pv.Spline(x)
             self.plotter.add_mesh(spline, color=color, line_width=3)
+
+    def plot_segment_electrodes(
+            self, models: List[SegmentElectrodeModel]) -> None:
+        for k, model in enumerate(models):
+            color = get_color(k)
+            p = self.func_world2vox(model.point)
+            v = self.func_world2vox(model.direction, apply_translation=False)
+            a, b = p + model.t_a*v, p + model.t_b*v
+            line = pv.Line(a, b)
+            self.plotter.add_mesh(line, color=color, line_width=3)

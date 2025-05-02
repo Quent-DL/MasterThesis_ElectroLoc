@@ -9,17 +9,19 @@ from utils import get_regression_line_parameters, distance_matrix
 import numpy as np
 from numpy import cross, sqrt, log
 from numpy.linalg import norm
-from typing import Literal, Union, Self
+from typing import Literal, Union, Self, Tuple
 from overrides import override
 from scipy.optimize import minimize_scalar
+from abc import ABC, abstractmethod
 
 
-class ElectrodeModel:
+class ElectrodeModel(ABC):
     """A curve model interface for describing generic a generic electrode."""
 
     # The minimum number of samples needed to compute the model parameters
     MIN_SAMPLES = 0
 
+    @abstractmethod
     def __init__(self, samples: np.ndarray):
         """Creates a regression model for an electrode.
         
@@ -32,6 +34,8 @@ class ElectrodeModel:
         raise RuntimeError(
             "ElectrodeModel is an interface and must not be instantiated.")
     
+    # TODO remove if useless
+    @abstractmethod
     def compute_dissimilarity(self, other: Self) -> float:
         """Computes the dissimilarity between this model and the given one.
         
@@ -42,10 +46,11 @@ class ElectrodeModel:
         - dissimilarity: a positive measure of dissimilarity between the two 
         models. A high value means that the models are very different from one 
         another, while a value equal to zero means they are identical."""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
+    @abstractmethod
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
-        """Computes the euclidian distance between this model and the
+        """Computes the euclidian distance between this model and the N
         given points.
         
         ### Input:
@@ -54,9 +59,10 @@ class ElectrodeModel:
         ### Output:
         - distance: the euclidian distance between each point and its
         closest projection onto the model. Shape (N,)."""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
-    def recompute(self, samples: np.ndarray) -> None:
+    @abstractmethod
+    def recompute(self, samples: np.ndarray, weights: np.ndarray=None) -> None:
         """Recomputes and overwrites the model parameters using a new set
         of samples. Modifies the model internally.
 
@@ -66,11 +72,15 @@ class ElectrodeModel:
         ### Input:
         - samples: the set of N 3-dimensional coordinates used to compute
         the model parameters. Shape (N, 3).
+        - weights: the weight given to each point when computing the
+        regression. Shape (K,). Does not have to sum to 1. By default, all
+        points are given equal weights.
         
         ### Output:
         - None"""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
+    @abstractmethod
     def merge(self, other: Self, w_self: float, w_other: float) -> None:
         """Merges the parameters of two models, and overwrites this model
         with the result. Modifies the model internally.
@@ -87,8 +97,9 @@ class ElectrodeModel:
         
         ### Output:
         None"""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
     
+    @abstractmethod
     def project(self, contacts: np.ndarray) -> np.ndarray:
         """Projects a set of contacts onto the model. The projection of a
         contact is the point on the model with the smallest euclidian distance
@@ -101,8 +112,9 @@ class ElectrodeModel:
         ### Output:
         - proj: the projection of the point(s) onto the model. Same shape as
         'contacts."""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
+    @abstractmethod
     def get_sequence(self, nb_points: int, t0: float, inter_distance: float, 
                      gamma: Literal[-1, 1]) -> np.ndarray:
         """Generates a sequence of evenly-spaced points along the model.
@@ -123,8 +135,9 @@ class ElectrodeModel:
         ### Output:
         - sequence: the sequence of 'nb_points' evenly-spaced by 'distance'
         along the model. Shape (nb_points, 3)."""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
+    @abstractmethod
     def get_gamma(self, a: np.ndarray, b: np.ndarray) -> int:
         """Returns whether the vector from a to b goes towards positive or
         negative values of t for this model.
@@ -136,8 +149,9 @@ class ElectrodeModel:
         ### Output:
         - gamma: whether the vector 'b-a' points towards positive (gamma = 1) 
         or negative (gamma = -1) values of t on the model."""
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
+    @abstractmethod
     def get_projection_t(self, points: np.ndarray) -> float:
         """Computes the value of curve parameter t to describe the projection
         of a point onto the model. In other words, returns t such that
@@ -153,7 +167,7 @@ class ElectrodeModel:
         float if 'points' has shape (3,), or t is an array with shape (N,) 
         if 'points' has shape (N, 3).
         """
-        raise NotImplementedError("Method not implemented by child class.")
+        pass
 
 
 class LinearElectrodeModel(ElectrodeModel):
@@ -170,12 +184,14 @@ class LinearElectrodeModel(ElectrodeModel):
     @override
     def __init__(self, samples: np.ndarray):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
-            raise ValueError("Expected at least 2 samples to create model."
+            raise ValueError("Expected at least 2 samples to create model. "
                              f"Got {len(samples)}.")
         self.recompute(samples)
 
+    # TODO remove if useless
     @override
     def compute_dissimilarity(self, other: Self) -> float:
+        raise RuntimeError("Deprecated")
         if not isinstance(other, LinearElectrodeModel):
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
@@ -205,12 +221,13 @@ class LinearElectrodeModel(ElectrodeModel):
         return norm(np.cross(v, p-points), axis=1) / norm(v)
     
     @override
-    def recompute(self, samples: np.ndarray) -> None:
+    def recompute(self, samples: np.ndarray, weights: np.ndarray=None) -> None:
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
             return
         
-        self.point, self.direction = get_regression_line_parameters(samples)
+        self.point, self.direction = get_regression_line_parameters(
+            samples, weights)
 
         # Setting the passage point close to the center of the samples
         self.point = self.project(samples.mean(axis=0))
@@ -260,17 +277,10 @@ class LinearElectrodeModel(ElectrodeModel):
 
     @override
     def get_projection_t(self, points: np.ndarray) -> float:
-        # proj(a)[j] = self.point[j] + t * self.direction[j]
-        # choose j such that self.direction[j] is not close to 0 
-        # (to avoid zero division-)
-        proj = self.project(points)
-        j = np.argmax(np.abs(self.direction))
-        if len(points.shape) == 1:
-            # 'a' and 'proj' have shape (3,)
-            return (proj - self.point)[j] / self.direction[j]
-        else:
-            # 'a' and 'proj' have shape (N, 3)
-            return (proj[:,j] - self.point[j]) / self.direction[j]
+        # Using geometric interpretation of dot product to compute
+        # relative t of projected points.
+        p, v = self.point, self.direction
+        return np.dot(points-p, v) / norm(v)**2 
 
 
 class ParabolicElectrodeModel(ElectrodeModel):
@@ -294,14 +304,16 @@ class ParabolicElectrodeModel(ElectrodeModel):
     @override
     def __init__(self, samples: np.ndarray):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
-            raise ValueError("Expected at least 3 samples to create model."
+            raise ValueError("Expected at least 3 samples to create model. "
                              f"Got {len(samples)}.")
         self.recompute(samples)
 
+    # TODO remove if useless
     @override
     def compute_dissimilarity(self, other: Self) -> float:
+        raise RuntimeError("Deprecated")
         if not isinstance(other, ParabolicElectrodeModel):
-            raise ValueError("'other' must be of type ParabolaElectrodeModel."\
+            raise ValueError("'other' must be of type ParabolaElectrodeModel. "
                              f"Got {type(other)}.")
         
         cosine_sim = lambda a, b: np.dot(a, b) / (norm(a) * norm(b))
@@ -324,7 +336,10 @@ class ParabolicElectrodeModel(ElectrodeModel):
         return np.sqrt(np.sum((points-projs)**2, axis=1))
     
     @override
-    def recompute(self, samples: np.ndarray) -> None:
+    def recompute(self, samples: np.ndarray, weights: np.ndarray=None) -> None:
+        if weights != None:
+            raise ValueError("Parabolic curves do not support weights " 
+                             "during regression.\n")
 
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
@@ -532,3 +547,149 @@ class ParabolicElectrodeModel(ElectrodeModel):
         if the argument t is a float, and shape (3, N) if t is an array
         with shape (N,)."""
         return np.array([t**2, t, np.ones_like(t)])
+
+
+class SegmentElectrodeModel(ElectrodeModel):
+    """A segment model for straight electrodes.
+    
+    Available instance attributes:
+    - self.point (np.ndarray): a point through which the line passes It is
+    computed to be the closest to the mean of the samples used to fit
+    the line. Shape (3,).
+    - self.direction (np.ndarray): the unit direction vector of the line. 
+    Shape (3,)."""
+    MIN_SAMPLES = 2
+
+    @override
+    def __init__(self, samples: np.ndarray):
+        if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
+            raise ValueError("Expected at least 2 samples to create model."
+                             f"Got {len(samples)}.")
+        self.recompute(samples)
+
+    # TODO remove if useless
+    @override
+    def compute_dissimilarity(self, other: Self) -> float:
+        raise RuntimeError("Deprecated")
+        if not isinstance(other, LinearElectrodeModel):
+            raise ValueError("'other' must be of type LinearElectrodeModel."\
+                             f"Got {type(other)}.")
+        p_a, v_a = self.point, self.direction
+        p_b, v_b = other.point, other.direction
+
+        # Cosine of the angle between the two directions (in range [0, 1])
+        cos_sim = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
+
+        if 1-cos_sim < 1e-8:
+            # The lines are (almost) perfectly parallel -> use a specific formula
+            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
+            dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
+        else:
+            # The angle between the line is sufficient to apply the general formula
+            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-skew-lines/
+            dist_points = (abs(np.dot(p_b-p_a, cross(v_a, v_b))) 
+                        / norm(cross(v_a, v_b)))
+
+        # Second term used to give score 0 to identical models
+        return (1 + dist_points) / (0.01 + cos_sim) - 1/(0.01+1)
+
+    @override
+    def compute_distance(self, points: np.ndarray) -> np.ndarray:
+        p, v = self.point, self.direction
+
+        t = self.get_projection_t(points)
+
+        x_a, x_b = self.get_segment_nodes()
+        distances_a = norm(points - x_a, axis=1)
+        distances_b = norm(points - x_b, axis=1)
+        # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
+        distances_model = norm(np.cross(v, p-points), axis=1) / norm(v)
+
+        distances = np.ones((points.shape[0]), dtype=float)
+        # The distance is computed differently following three cases:
+        # t < t_a,    t_b < t,    and  t_a <= t <= t_b
+        cond_a = t < self.t_a
+        cond_b = self.t_b < t
+        cond_other = np.logical_not(cond_a | cond_b)
+        
+        # Filling array 'distances' with the values coming from the appropriate
+        # array. 
+        distances[cond_a] = distances_a[cond_a] 
+        distances[cond_b] = distances_b[cond_b]
+        distances[cond_other] = distances_model[cond_other] 
+        return distances
+    
+    @override
+    def recompute(self, samples: np.ndarray, weights: np.ndarray=None) -> None:
+        if len(samples) < self.MIN_SAMPLES:
+            # Ignore if not enough samples given
+            return
+        
+        self.point, self.direction = get_regression_line_parameters(samples)
+
+        # Setting the passage point close to the center of the samples
+        self.point = self.project(samples.mean(axis=0))
+        # Imposing unit directional vector
+        self.direction /= norm(self.direction)
+
+        # Updating the start and end times of the segment
+        t = self.get_projection_t(samples)
+        self.t_a = t.min()
+        self.t_b = t.max()
+
+    @override
+    def merge(self, other: Self, w_self: float, w_other: float) -> None:
+        if type(other) != LinearElectrodeModel:
+            raise ValueError("'other' must be of type LinearElectrodeModel."\
+                             f"Got {type(other)}.")
+        
+        raise RuntimeError("TODO update")
+        
+        # Giving equal weights if both are zero:
+        if (w_self + w_other == 0):
+            w_self, w_other = 1, 1
+        
+        # Renaming for shorter formulas
+        p_a, v_a = self.point, self.direction
+        p_b, v_b = other.point, other.direction
+        w_a, w_b = w_self, w_other
+
+        self.point     = (p_a*w_a + p_b*w_b) / (w_a + w_b)
+        self.direction = (v_a*w_a + v_b*w_b) / (w_a + w_b)
+
+    @override
+    def project(self, contacts: np.ndarray) -> np.ndarray:
+        # For shorter formulas
+        p, v = self.point, self.direction
+        if len(contacts.shape) == 1:
+            # Contacts of shape (3,)
+            return p + np.dot(contacts-p, v) / np.dot(v, v) * v
+        else:
+            # Contacts of shape (N, 3)
+            dots = np.dot(contacts-p, v).reshape((len(contacts), 1))
+            v_repeated = np.tile(v, (len(contacts), 1))
+            return p + dots / np.dot(v, v) * v_repeated
+
+    @override
+    def get_sequence(self, nb_points: int, t0: float, inter_distance: float, 
+                     gamma: Literal[-1, 1]) -> np.ndarray:
+        offsets = inter_distance * np.arange(nb_points).reshape((nb_points, 1))
+        return self.point + self.direction * (t0 + np.sign(gamma)*offsets)
+
+    # TODO see if useful (wrapper)
+    def get_segment_nodes(self) -> Tuple[np.ndarray]:
+        """Returns the points delimiting the semgent."""
+        x_a = self.get_sequence(1, self.t_a, 0, 1)
+        x_b = self.get_sequence(1, self.t_b, 0, 1)
+        return x_a, x_b
+
+    @override
+    def get_gamma(self, a: np.ndarray, b: np.ndarray) -> int:
+        return np.sign(np.dot(b-a, self.direction))
+
+    @override
+    def get_projection_t(self, points: np.ndarray) -> float:
+        # Using geometric interpretation of dot product to compute
+        # relative t of projected points.
+        p, v = self.point, self.direction
+        return np.dot(points-p, v) / norm(v)**2 

@@ -25,13 +25,17 @@ def log(msg: str, erase: bool=False) -> None:
 
 
 def get_regression_line_parameters(
-        points: np.ndarray
+        points: np.ndarray,
+        samples_weights: np.ndarray = None
     ) -> Tuple[np.ndarray, np.ndarray]:
     """Computes a linear regression using the given 3-dimensional points.
     
     ### Input:
     - points: an array of shape (K, 3) that contains the 3D coordinates of
     the points on which to perform the regression.
+    - samples_weights: the weight given to each point when computing the
+    regression. Shape (K,). Does not have to sum to 1. By default, all
+    points are given equal weights.
     
     ### Outputs:
     - point: an array of shape (3,) that represents the point (0, p_y, p_z) by
@@ -43,11 +47,14 @@ def get_regression_line_parameters(
     'points' is the set of coordinates such that 
     (x, y, z) = point + t*direction, for all real values t.
     """
+    if samples_weights is None:
+        samples_weights = np.ones((points.shape[0],), dtype=float)
+    samples_weights /= samples_weights.sum()
 
     #neigh, _ = __get_vector_K_nearest(contacts, k)
     #data = np.concatenate([neigh, contacts[np.newaxis,:]])
     model = LinearRegression(fit_intercept=True)
-    model.fit(points[:,:1], points[:,1:])
+    model.fit(points[:,:1], points[:,1:], samples_weights)
     return (
         np.concatenate([[0], model.intercept_]),
         np.concatenate([[1], model.coef_.ravel()])

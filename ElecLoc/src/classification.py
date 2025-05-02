@@ -2,12 +2,13 @@
 
 from electrode_models import (ElectrodeModel, LinearElectrodeModel, 
                               ParabolicElectrodeModel)
+from postprocessing import __estimate_intercontact_distance
 from utils import log
 
 import numpy as np
 from numpy import cross
 from numpy.linalg import norm
-from typing import List, Type
+from typing import List, Tuple, Type
 
 
 def __get_K_nearest_neighbors(contacts: np.ndarray, k:int) -> List[np.ndarray]:
@@ -45,15 +46,38 @@ def __get_K_nearest_neighbors(contacts: np.ndarray, k:int) -> List[np.ndarray]:
     return np.stack(neighbors)
 
 
-def __compute_dissimilarity_matrix(models: List[ElectrodeModel]) -> np.ndarray:
+def __compute_dissimilarity_matrix(
+        models: List[ElectrodeModel],
+        contacts: np.ndarray,
+        labels: np.ndarray
+) -> np.ndarray:
     """TODO write documentation"""
     n_models = len(models)
     dissim_matrix = np.empty((n_models, n_models), dtype=np.float64)
+
+    # TODO keep or remove (new)
+    # Shape (K, N)
+    distances = __compute_points_models_distances(contacts, models).T
+    for i, _ in enumerate(models):
+        for j, _ in enumerate(models[i:]):
+            distances_i_to_j = distances[j][labels == i]
+            distances_j_to_i = distances[i][labels == j]
+            distances_ij = np.concatenate([distances_i_to_j, distances_j_to_i])
+            dissim_ij = np.mean(distances_ij**2) if len(distances_ij) > 0 else -1
+            dissim_matrix[i, j] = dissim_ij
+            dissim_matrix[j, i] = dissim_ij
+    
+    # Pairs of models without any sample are very dissimilar by default
+    dissim_matrix[dissim_matrix == -1] = dissim_matrix.max()
+    
+    """TOOD keep or remove (old)
     for i, model_i in enumerate(models):
         for j, model_j in enumerate(models[i:]):
             dissim = model_i.compute_dissimilarity(model_j)
             dissim_matrix[i, j] = dissim
             dissim_matrix[j, i] = dissim
+    """
+
     return dissim_matrix
 
 
@@ -64,20 +88,42 @@ def __compute_neighborhood_matrix(
 ) -> np.ndarray:
     """TODO write documentation"""
     # The neighbors of each contact. Shape (k, N, 3)
-    neighs = __get_K_nearest_neighbors(contacts, model_cls.MIN_SAMPLES)
+    neighs = __get_K_nearest_neighbors(contacts, model_cls.MIN_SAMPLES)    
+    n_contacts = len(contacts)
+
+    # The k-1 closest neighbors of each contact. Shape (k-1, N, 3)
+    neighs = __get_K_nearest_neighbors(contacts, model_cls.MIN_SAMPLES-1)
 
     # For each contact (index 1) the coordinates (index 2) 
-    # of itself and its neighbors (index 1). Shape (k+1, N, 3)
-    all_samples = np.concatenate([neighs, contacts[np.newaxis,:]])
+    # of itself and its neighbors (index 1). Shape (k, N, 3)
+    all_samples = np.concatenate([neighs, contacts[np.newaxis,...]])
 
+    # Associating one model to each contact
+    labels = np.arange(n_contacts)
     models = []
     n_contacts = all_samples.shape[1]
     for i in range(n_contacts):
         model = model_cls(all_samples[:,i,:])
         models.append(model)
-    return np.exp(- __compute_dissimilarity_matrix(models) / c**2)
+    return np.exp(- __compute_dissimilarity_matrix(models, contacts, labels) / c**2)
 
+# TODO keep or remove (new)
+def __neighbors_models_sampling(
+        contacts: np.ndarray,
+        model_cls: Type[ElectrodeModel]
+) -> List[ElectrodeModel]:
+    neighbors = __get_K_nearest_neighbors(contacts, model_cls.MIN_SAMPLES-1)
+    # Shape (n_samples_per_model, n_models, 3)   where n_models == n_contacts
+    samples = np.concatenate([contacts[np.newaxis,...], neighbors])
 
+    models = []
+    for k in range(len(contacts)):
+        model = model_cls(samples[:,k])
+        models.append(model)
+    
+    return models
+
+# TODO keep or remove (old)
 def __random_models_sampling(
         contacts: np.ndarray, 
         n_models: np.ndarray, 
@@ -103,6 +149,7 @@ def __random_models_sampling(
     return models
 
 
+
 def __compute_points_models_distances(
         contacts: np.ndarray,
         models: List[ElectrodeModel]
@@ -124,13 +171,14 @@ def __compute_points_models_distances(
     return np.stack(distances, axis=-1)
 
 
+""" TODO remove if useless (old)
 def __compute_labels_and_energy(
         contacts: np.ndarray, 
         models: List[ElectrodeModel],
         neighborhood_matrix: np.ndarray,
         lambda_weight: float
 ) -> float:
-    """TODO write documentation"""
+    \"""TODO write documentation\"""
     # TODO add outlier system with params = (cost, threshold)
 
     # Shape (N, K)
@@ -147,6 +195,44 @@ def __compute_labels_and_energy(
 
     tot_energy = model_cost + lambda_weight * neighborhood_penalty
     return labels, tot_energy
+"""
+
+
+def __compute_labels(
+        contacts: np.ndarray, 
+        models: List[ElectrodeModel]
+) -> float:
+    """TODO write documentation"""
+    # Shape (N, K)
+    distances = __compute_points_models_distances(contacts, models)
+    labels = distances.argmin(axis=1)    # Shape (N,)
+    return labels
+
+
+def __delete_model(
+    models: List[ElectrodeModel],
+    index: int | List[int],
+    labels: np.ndarray
+) -> None:
+    """Safely deletes one or several models and ensures that the labels are 
+    still matching.
+    The labels of the deleted model(s) are replaced by -1."""
+    if isinstance(index, (int, np.int64)):
+        index = [index]
+
+    # Deleting the indices by decreasing value to avoid conflicts
+    index = (sorted(index, reverse=True))
+
+    for i in index:
+        # Deleting 'index' and place the last model at that index instead
+        models[i] = models[-1]
+        del models[-1]
+
+        if i == labels.max():
+            labels[labels == i] = -1
+        else:
+            labels[labels == i] = -1
+            labels[labels == labels.max()] = i
 
 
 def __recompute_models(
@@ -155,37 +241,35 @@ def __recompute_models(
         labels: np.ndarray
 ) -> None:
     """TODO write documentation"""
+
+    # TODO only compute once
+    intercontact_dist = __estimate_intercontact_distance(contacts)
+    c = 2*intercontact_dist
+
+    distances = __compute_points_models_distances(contacts, models)
     for k, model in enumerate(models):
+        # The distance between the contacts labelled k and model k
+        distances_k = distances[labels == k][:,k]
+        weights = np.exp(-distances_k**2 / c)
         inliers = contacts[labels == k]    # Shape (NB_INLIERS, 3)
-        model.recompute(inliers)
+        model.recompute(inliers, weights)
 
 
-def __reduce_models(
+def __merge_two_most_similar_models(
         models: List[ElectrodeModel], 
         labels: np.ndarray, 
-        min_inliers: int,
+        contacts: np.ndarray,
         n_electrodes: int
-) -> List[ElectrodeModel]:
+) -> Tuple[List[ElectrodeModel], np.ndarray]:
     """TODO write documentation"""
-    # Account for:
-    # - number of inliers
-    # - similarity between models
-
-
-    ### Removing unsupported models, starting from last 
-    # (to avoid concurrent modification between modif and iteration)
-    n_models = len(models)
-    for k in range(n_models-1, -1, -1):
-        if np.sum(labels==k) < min_inliers and len(models) > n_electrodes:
-            del models[k]
 
     ### Merging similar models
     if len(models) <= n_electrodes:
-        return models
+        return models, labels
 
     # Computing dissimilarity between all pairs of models (ignoring diagonal)
     n_models = len(models)
-    dissim_scores = __compute_dissimilarity_matrix(models)
+    dissim_scores = __compute_dissimilarity_matrix(models, contacts, labels)
     dissim_scores[range(n_models),range(n_models)] = dissim_scores.max()
 
     # Selecting a pair of models to merge, and the size of their support
@@ -193,14 +277,98 @@ def __reduce_models(
     n_i = np.sum(labels==i)
     n_j = np.sum(labels==j)
 
-    # Merging the model
-    models[i].merge(models[j], n_i, n_j)
-    del models[j]
+    # Merging the models
+    # TODO keep or remove
+    # models[i].merge(models[j], n_i, n_j)
 
-    return models
+    # Deleting the two models, and recomputing a new one
+    # from the orphan contacts
+    model_cls = models[i].__class__
+    __delete_model(models, [i, j], labels)
+    models.append(model_cls(contacts[labels == -1]))
+    labels[labels == -1] = len(models)-1    # useless
+
+    labels = __compute_labels(contacts, models)
+    __recompute_models(contacts, models, labels)
+
+    return models, labels
 
 
-def segment_electrodes(
+def __delete_unsupported_models(
+        models: List[ElectrodeModel],
+        labels: np.ndarray,
+        contacts: np.ndarray,
+        n_electrodes: int
+) -> Tuple[List[ElectrodeModel], np.ndarray]:
+    """TODO write documentation"""
+    counts = np.bincount(labels, minlength=len(models))    # Shape (N_MODELS,)
+    for k in range(len(models)-1, -1, -1):
+        if (counts[k] < models[k].MIN_SAMPLES 
+                and len(models) > n_electrodes):
+            __delete_model(models, k, labels)
+    labels = __compute_labels(contacts, models)
+    __recompute_models(contacts, models, labels)
+    return models, labels
+
+
+def __delete_most_redundant_model(
+        models: List[ElectrodeModel],
+        labels: np.ndarray,
+        contacts: np.ndarray,
+        n_electrodes: int
+) -> Tuple[List[ElectrodeModel], np.ndarray]:
+    """Deletes the most redundant model, i.e. the model k with smallest average 
+    distance to contacts which have k as their second closest model."""
+    if len(models) <= n_electrodes:
+        return models, labels
+    
+    # Computing, for each contact, the index of the second closest model
+    distances = __compute_points_models_distances(contacts, models)
+    distances[range(len(contacts)), distances.argmin(axis=1)] = distances.max()
+    idx_second = distances.argmin(axis=1)        # Shape (N,)
+
+    scores = []
+    for k, _ in enumerate(models):
+        # For each model k, computing the average distance between k
+        # and the contacts which have k as second closest model
+        inliers_dist_second = idx_second[labels == k]
+        if len(inliers_dist_second) > 0:
+            scores.append(inliers_dist_second.mean())
+        else: 
+            # Model k is not the second closest to any contact => ignore
+            scores.append(-1)
+
+    # Invalidate ignored models
+    scores = np.array(scores)
+    scores[scores == -1] = scores.max()
+
+    # Deletes the most redundant model
+    deleted_k = np.argmin(scores)
+    __delete_model(models, deleted_k, labels)
+    labels = __compute_labels(contacts, models)
+    __recompute_models(contacts, models, labels)
+    return models, labels
+
+
+def __delete_least_supported_model(
+        models: List[ElectrodeModel],
+        labels: np.ndarray,
+        contacts: np.ndarray,
+        n_electrodes: int
+) -> Tuple[List[ElectrodeModel], np.ndarray]:
+    """Deletes the model with least support in 'labels'."""
+    if len(models) <= n_electrodes:
+        return models, labels
+
+    counts = np.bincount(labels, minlength=len(models))    # Shape (N_MODELS,)
+    deleted_k = np.argmin(counts)
+    __delete_model(models, deleted_k, labels)
+    labels = __compute_labels(contacts, models)
+    __recompute_models(contacts, models, labels)
+    return models, labels
+
+
+def classify_electrodes(
         contacts: np.ndarray,
         n_electrodes: int,
         model_cls: Type[ElectrodeModel] = LinearElectrodeModel
@@ -210,41 +378,50 @@ def segment_electrodes(
     # TODO tweak hyperparams
     # TODO instead of hard-coded nb of init models, compute one for each neighboring pair
     n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
-    lambda_weight = 1
-    min_inliers = model_cls.MIN_SAMPLES + 1
-    max_init = 1000
-    energy_tol = 1e-6
-    neighborhood_regul_c = 2.0
-
-    neighborhood_matrix = __compute_neighborhood_matrix(
-        contacts, model_cls, neighborhood_regul_c)
+    max_iter = 1000000
 
     # Proposing initial models through random sampling
+    """ TODO keep or remove (old)
     models = __random_models_sampling(
-        contacts, n_init_models, model_cls)
+        contacts, n_init_models, model_cls)"""
+    
+    models = __neighbors_models_sampling(contacts, model_cls)
 
     # Assigning each contact to one model and computing the resulting energy
-    energy_prev = 1e127
-    labels, energy_now = __compute_labels_and_energy(
-        contacts, models, neighborhood_matrix, lambda_weight)
+    labels = __compute_labels(contacts, models)
+
+    models, labels = __delete_unsupported_models(
+        models, labels, contacts, n_electrodes)
     
-    init = 0
+    iter = 0
+    previous_labels = np.empty_like(labels)
     # TODO could happen that init >= max_init AND models > n_electrodes, fix that
-    while ((abs(energy_prev - energy_now) > energy_tol
+    # TODO: ensure that energy is decreasing
+    while ((not np.all(labels == previous_labels)
            or len(models) > n_electrodes)
-           and init < max_init):
-        init += 1
+           and iter < max_iter):
+        iter += 1
+        previous_labels[:] = labels[:]
+
+
+        print(f"Iter {iter}", end='\r')
 
         # Refining the models based on their spatial support
         __recompute_models(contacts, models, labels)
 
-        # Merging similar models, or deleting those with insufficient support
-        if len(models) > n_electrodes:
-            models = __reduce_models(models, labels, min_inliers, n_electrodes)
+        """models, labels = __delete_unsupported_models(
+            models, labels, contacts, n_electrodes)
 
-        # Re-assigning each contact to one model and computing the resulting energy
-        energy_prev = energy_now
-        labels, energy_now = __compute_labels_and_energy(
-            contacts, models, neighborhood_matrix, lambda_weight)
+        models, labels = __merge_two_most_similar_models(
+            models, labels, contacts, n_electrodes)
+        
+        models, labels = __delete_most_redundant_model(
+            models, labels, contacts, n_electrodes)"""
+        
+        models, labels = __delete_least_supported_model(
+            models, labels, contacts, n_electrodes)
+
+    if (iter == max_iter):
+        raise RuntimeWarning("Max iteration reached while computing models.")
         
     return labels, models

@@ -7,13 +7,16 @@ import postprocessing
 import validation
 import plot
 
-from electrode_models import LinearElectrodeModel, ParabolicElectrodeModel
+from electrode_models import (LinearElectrodeModel, ParabolicElectrodeModel,
+                              SegmentElectrodeModel)
 
 # External modules
 import os
 import numpy as np
 
 def main():
+    # TODO Remove:
+    APPLY_POSTPROCESSING = False
     # TODO Remove: synthetic data
     DEBUG_USE_SYNTH = False
     path_suffix = ("sub11" if not DEBUG_USE_SYNTH else "synthetic01")
@@ -24,14 +27,14 @@ def main():
 
     ### Inputs
     # Inputs for algorithm
-    data_dir          = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+    data_dir          = ("D:\\QTFE_local\\Python\\ElecLoc\\"
                          f"data\\{path_suffix}")
     ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
     ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
     contacts_path     = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
     elec_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
     # Inputs for validation
-    ground_truth_path = ("D:\\QTFE_local\\Python\\ElectrodesLocalization\\"
+    ground_truth_path = ("D:\\QTFE_local\\Python\\ElecLoc\\"
                         f"data_ground_truths\\{path_suffix}\\ground_truth.csv")
     # Output
     output_positions_path = os.path.join(data_dir, "out\\electrodes.csv")
@@ -71,15 +74,16 @@ def main():
 
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels, models = classification.segment_electrodes(
+    labels, models = classification.classify_electrodes(
         contacts, N_ELECTRODES, 
-        model_cls=LinearElectrodeModel)
+        model_cls=SegmentElectrodeModel)
 
     ### Postprocessing
     log("Post-processing results")
-    contacts, labels, contacts_ids, models = postprocessing.postprocess(
-        contacts, labels, ct_center_world, models, electrodes_info,
-        model_cls=ParabolicElectrodeModel)
+    if APPLY_POSTPROCESSING:
+        contacts, labels, contacts_ids, models = postprocessing.postprocess(
+            contacts, labels, ct_center_world, models, electrodes_info,
+            model_cls=ParabolicElectrodeModel)
     intercontact_dist_world = postprocessing.__estimate_intercontact_distance(contacts)
     
     ### Validation: retrieving stats about distance error
@@ -102,19 +106,22 @@ def main():
     plotter.plot_ct_electrodes(ct_object.mask)
     plotter.plot_electrodes_models(models)
     plotter.plot_colored_contacts(contacts, labels)
+    """TODO debug uncomment
     plotter.plot_contacts(contacts[excess_dt_idx], color=(0,0,0), 
                           size_multiplier=2.5)
     plotter.plot_contacts(ground_truth[holes_gt_idx], color=(255,255,255), 
                           size_multiplier=2.5)
-    plotter.plot_matches(contacts[matched_dt_idx], 
+    plotter.plot_differences(contacts[matched_dt_idx], 
                          ground_truth[matched_gt_idx])
+    """
     plotter.show()
 
     # Saving results to CSV file
     log("Saving results")
     contacts_vox = ct_object.convert_world_to_vox(contacts)
     intercontact_dist_vox = postprocessing.__estimate_intercontact_distance(contacts)
-    output_csv.save_output(contacts_vox, labels, contacts_ids)
+    if APPLY_POSTPROCESSING:
+        output_csv.save_output(contacts_vox, labels, contacts_ids)
     ct_object.save_contacts_mask(
         output_nifti_path, contacts_vox, 0.25*intercontact_dist_vox)
 
