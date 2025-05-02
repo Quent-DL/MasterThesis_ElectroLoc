@@ -147,7 +147,7 @@ def compute_contacts_centers(
 
     centroids = []
     for cc_id in range(1, n_comps+1):    # For each connected component (CC)
-        # TODO PRINT REMOVE
+        # TODO DEBUG REMOVE
         print("Component", cc_id, end="\r")
         # Keeping only the smallest array that fully contains the CC (= box)
         comp = (connected_comps_labels == cc_id)

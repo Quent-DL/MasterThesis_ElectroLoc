@@ -294,6 +294,7 @@ def postprocess(
     for k, model in enumerate(models):
         models[k] = model_cls(contacts[labels==k])
 
+
     # Computing the electrode-wise positional id of each contact
     positions_ids = __get_electrodes_contacts_ids(contacts, labels, ct_center)
 

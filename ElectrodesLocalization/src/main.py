@@ -2,16 +2,35 @@
 import utils
 from utils import log
 import contacts_isolation
-import segmentation_multimodel
+import ElectrodesLocalization.src.classification as classification
 import postprocessing
 import validation
 import plot
+
 
 from electrode_models import LinearElectrodeModel, ParabolicElectrodeModel
 
 # External modules
 import os
 import numpy as np
+
+
+def extract_from_files(
+        ct_path: str, 
+        mask_path:str = None, 
+        thresh_min: float = None, 
+        thresh_max: float = None,
+) -> np.ndarray:
+    # TODO write
+    ct_object = utils.NibCTWrapper(ct_path, mask_path)
+    ct_object.apply_threshold(thresh_min, thresh_max)
+
+    return contacts_isolation.compute_contacts_centers(
+            ct_grayscale=ct_object.ct, 
+            ct_mask=ct_object.mask, 
+            struct=contacts_isolation.__get_structuring_element('cross')
+    )
+
 
 def main():
     # TODO Remove: synthetic data
@@ -47,6 +66,7 @@ def main():
 
     ### Preprocessing
     log ("Preprocessing data")
+    # Applying Otsu threshold to keep electrodes only
     ct_object.mask &= (ct_object.ct > ELECTRODE_THRESHOLD)
     
     ### Fetching approximate contacts
@@ -71,7 +91,7 @@ def main():
 
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels, models = segmentation_multimodel.segment_electrodes(
+    labels, models = classification.classify_electrodes(
         contacts, N_ELECTRODES, 
         model_cls=LinearElectrodeModel)
 
@@ -98,7 +118,7 @@ def main():
     log("Plotting results")
     plotter = plot.ElectrodePlotter(ct_object.convert_world_to_vox)
     plotter.update_focal_point(contacts.mean(axis=0))
-    #plotter.plot_ct(ct_object.ct)
+    plotter.plot_ct(ct_object.ct)
     plotter.plot_ct_electrodes(ct_object.mask)
     plotter.plot_electrodes_models(models)
     plotter.plot_colored_contacts(contacts, labels)

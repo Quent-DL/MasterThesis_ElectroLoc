@@ -96,7 +96,7 @@ def validate_contacts_position(
         f"Min:  {rlvt_distances.min():<9.3f}    "
             f"Max: {rlvt_distances.max():<9.3f}\n"
         f"25%:  {np.quantile(rlvt_distances, 0.25):<9.3f}    "
-            f"75%: {np.quantile(rlvt_distances, 0.75):<9.3f}\n"
+            f"95%: {np.quantile(rlvt_distances, 0.95):<9.3f}\n"
         "\n"
         "==================================================\n")
     

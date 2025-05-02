@@ -200,7 +200,7 @@ def __reduce_models(
     return models
 
 
-def segment_electrodes(
+def classify_electrodes(
         contacts: np.ndarray,
         n_electrodes: int,
         model_cls: Type[ElectrodeModel] = LinearElectrodeModel

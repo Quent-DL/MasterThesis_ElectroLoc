@@ -77,13 +77,16 @@ def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
 
 
 class NibCTWrapper:
-    def __init__(self, ct_path: str, ct_brainmask_path: str):
+    def __init__(self, ct_path: str, ct_brainmask_path: Optional[str]):
         # Thresholding and skull-stripping CT
         nib_ct = nib.load(ct_path)
 
         # The arrays of the CT and brain mask
         self.ct   = nib_ct.get_fdata()
-        self.mask = nib.load(ct_brainmask_path).get_fdata().astype(bool)
+        if ct_brainmask_path != None:
+            self.mask = nib.load(ct_brainmask_path).get_fdata().astype(bool)
+        else:
+            self.mask = np.ones_like(self.ct, dtype=bool)
 
         # Considering that voxels may not be square but rectangular
         # (this info is stored in the file's affine matrix)
@@ -93,6 +96,18 @@ class NibCTWrapper:
 
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
+    
+    def apply_threshold(self, min: Optional[float], 
+                        max: Optional[float]) -> None:
+        """Applies the specified thresholds to the mask of this object.
+        The thresholds are applied in place.
+        
+        ### Inputs:
+        - min, max: the optional thresholds to apply."""
+        if min is None: min = self.ct.min()
+        if max is None: max = self.ct.max()
+        filter = (min <= self.ct) & (self.ct <= max)
+        self.mask &= filter
 
     def __apply_affine(
             self,
