@@ -1,8 +1,8 @@
 # Local modules
 import utils
 from utils import log
-import ElecLoc.src.centroids_extraction as centroids_extraction
-import ElectrodesLocalization.src.classification as classification
+import centroids_extraction
+import classification
 import postprocessing
 import validation
 import plot
