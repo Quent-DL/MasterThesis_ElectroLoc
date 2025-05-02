@@ -234,7 +234,7 @@ def postprocess(
     """TODO write documentation"""
 
     if intercontact_distance is None:
-        intercontact_distance = utils.__estimate_intercontact_distance(contacts)
+        intercontact_distance = utils.estimate_intercontact_distance(contacts)
 
     # ...
 

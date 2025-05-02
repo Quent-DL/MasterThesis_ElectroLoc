@@ -240,9 +240,8 @@ def __recompute_models(
         labels: np.ndarray
 ) -> None:
     """TODO write documentation"""
-
-    # TODO only compute once
-    intercontact_dist = __estimate_intercontact_distance(contacts)
+    
+    global intercontact_dist
     c = 2*intercontact_dist
 
     distances = __compute_points_models_distances(contacts, models)
@@ -379,11 +378,10 @@ def classify_electrodes(
     n_init_models = 10 * len(contacts)    # TODO: proof that impossible to have all models with inliers_k < min_inliers in first iteration
     max_iter = 1000000
 
-    # Proposing initial models through random sampling
-    """ TODO keep or remove (old)
-    models = __random_models_sampling(
-        contacts, n_init_models, model_cls)"""
-    
+    global intercontact_dist
+    intercontact_dist = estimate_intercontact_distance(contacts)
+
+    # Proposing initial models
     models = __neighbors_models_sampling(contacts, model_cls)
 
     # Assigning each contact to one model and computing the resulting energy

@@ -83,7 +83,7 @@ def distance_matrix(a: np.ndarray, b: np.ndarray=None) -> np.ndarray:
     return distance_matrix
 
 
-def __estimate_intercontact_distance(
+def estimate_intercontact_distance(
         contacts: np.ndarray
 ) -> Tuple[float, float]:
     """Returns an estimate of the inter-contact distance based on an histogram.

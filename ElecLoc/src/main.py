@@ -84,7 +84,7 @@ def main():
         contacts, labels, contacts_ids, models = postprocessing.postprocess(
             contacts, labels, ct_center_world, models, electrodes_info,
             model_cls=ParabolicElectrodeModel)
-    intercontact_dist_world = utils.__estimate_intercontact_distance(contacts)
+    intercontact_dist_world = utils.estimate_intercontact_distance(contacts)
     
     ### Validation: retrieving stats about distance error
     log("Validating results")
@@ -119,7 +119,7 @@ def main():
     # Saving results to CSV file
     log("Saving results")
     contacts_vox = ct_object.convert_world_to_vox(contacts)
-    intercontact_dist_vox = utils.__estimate_intercontact_distance(contacts)
+    intercontact_dist_vox = utils.estimate_intercontact_distance(contacts)
     if APPLY_POSTPROCESSING:
         output_csv.save_output(contacts_vox, labels, contacts_ids)
     ct_object.save_contacts_mask(
