@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import (binary_erosion, binary_propagation,
+                           generate_binary_structure,
                            label, center_of_mass)
 from utils import log
 from typing import Tuple
@@ -10,23 +11,7 @@ def __get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
     elif type == 'cross':
-        return np.array([
-            [
-                [0,0,0],
-                [0,1,0],
-                [0,0,0]
-            ],
-            [
-                [0,1,0],
-                [1,1,1],
-                [0,1,0]
-            ],
-            [
-                [0,0,0],
-                [0,1,0],
-                [0,0,0]
-            ]
-        ])
+        return generate_binary_structure(3, 1)
     else:
         raise ValueError(
             f"Structuring element type must be 'cube' or 'cross'. Got: {type}")

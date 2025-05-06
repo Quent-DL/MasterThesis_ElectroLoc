@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 from typing import List, Callable, Optional, Tuple
 from copy import copy
 
+# A constant to add to any point/point cloud so that it
+# is rendered at the center of the voxels
+VOX_CENTERING = np.array([0.5, 0.5, 0.5])
 
 __COLOR_PALETTE = [
     
@@ -75,7 +78,7 @@ class ElectrodePlotter:
         """TODO write documentation"""
         if len(contacts) == 0:
             return
-        point_cloud = pv.PolyData(self.func_world2vox(contacts))
+        point_cloud = pv.PolyData(self.func_world2vox(contacts)+VOX_CENTERING)
         self.plotter.add_points(
             point_cloud, 
             point_size=5.0*size_multiplier, 
@@ -106,7 +109,7 @@ class ElectrodePlotter:
     def plot_colored_contacts(self, contacts: np.ndarray, 
                               labels: np.ndarray) -> None:
         """TODO write documentation"""
-        contacts = self.func_world2vox(contacts)
+        contacts = self.func_world2vox(contacts)+VOX_CENTERING
         # Iterate over each electrode and add its contacts to the plotter
         for k, e_id in enumerate(np.unique(labels)):
             color = get_color(k)
@@ -118,7 +121,9 @@ class ElectrodePlotter:
     def plot_differences(self, matched_DT, matched_GT) -> None:
         """TODO write documentation"""
         for dt, gt in zip(matched_DT, matched_GT):
-            line = pv.Line(self.func_world2vox(dt), self.func_world2vox(gt))
+            line = pv.Line(
+                self.func_world2vox(dt)+VOX_CENTERING, 
+                self.func_world2vox(gt)+VOX_CENTERING)
             self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)
 
     def plot_electrodes_models(self, models: List[ElectrodeModel]) -> None:
@@ -133,7 +138,7 @@ class ElectrodePlotter:
             self, models: List[LinearElectrodeModel]) -> None:
         for k, model in enumerate(models):
             color = get_color(k)
-            p = self.func_world2vox(model.point)
+            p = self.func_world2vox(model.point)+VOX_CENTERING
             v = self.func_world2vox(model.direction, apply_translation=False)
             # TODO replace 50 by maningful values
             a, b = p - 50*v, p + 50*v
@@ -148,7 +153,7 @@ class ElectrodePlotter:
             v, u, c = model.coefs.T
             v = self.func_world2vox(v, apply_translation=False)
             u = self.func_world2vox(u, apply_translation=False)
-            c = self.func_world2vox(c)
+            c = self.func_world2vox(c) + VOX_CENTERING
             model_plot.coefs = np.stack([v, u, c], axis=-1)
 
             # Plotting
@@ -163,7 +168,7 @@ class ElectrodePlotter:
             self, models: List[SegmentElectrodeModel]) -> None:
         for k, model in enumerate(models):
             color = get_color(k)
-            p = self.func_world2vox(model.point)
+            p = self.func_world2vox(model.point) + VOX_CENTERING
             v = self.func_world2vox(model.direction, apply_translation=False)
             a, b = p + model.t_a*v, p + model.t_b*v
             line = pv.Line(a, b)
