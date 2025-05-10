@@ -154,6 +154,12 @@ class NibCTWrapper:
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
 
+    def get_zoom(self):
+        """Returns the zoom to apply to the image for isotropic distances."""
+        vox_size = self.get_voxel_size()
+        zoom_factor = vox_size / vox_size.min()
+        return zoom_factor
+
     def __apply_affine(
             self,
             coords: np.ndarray, 

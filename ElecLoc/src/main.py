@@ -14,16 +14,24 @@ from electrode_models import (LinearElectrodeModel, ParabolicElectrodeModel,
 import os
 import numpy as np
 
+# TODO introduce as hyperparameter
+NB_ELECTRODES_PER_SCAN = {
+    "synthetic01": 5,
+    "sub11": 8,
+    "sub04": 13,
+    "subBrainstorm01": 15,
+    "subBrainstorm02": 15
+}
+
+
 def main():
-    # TODO Remove:
-    APPLY_POSTPROCESSING = False
-    # TODO Remove: synthetic data
-    DEBUG_USE_SYNTH = False
-    path_suffix = ("sub11" if not DEBUG_USE_SYNTH else "synthetic01")
+    # TODO Remove
+    DEBUG_APPLY_POSTPROCESSING = False
+    path_suffix = "sub04"
 
     # TODO replace hyperparameters
     ELECTRODE_THRESHOLD = 2500
-    N_ELECTRODES = (8 if not DEBUG_USE_SYNTH else 5)
+    n_electrodes = NB_ELECTRODES_PER_SCAN[path_suffix]
 
     ### Inputs
     # Inputs for algorithm
@@ -75,15 +83,20 @@ def main():
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
     labels, models = classification.classify_electrodes(
-        contacts, N_ELECTRODES, 
-        model_cls=SegmentElectrodeModel)
+        contacts, n_electrodes, 
+        model_cls=SegmentElectrodeModel,
+    )
 
     ### Postprocessing
     log("Post-processing results")
-    if APPLY_POSTPROCESSING:
+    if DEBUG_APPLY_POSTPROCESSING:
         contacts, labels, contacts_ids, models = postprocessing.postprocess(
             contacts, labels, ct_center_world, models, electrodes_info,
             model_cls=ParabolicElectrodeModel)
+    else:
+        # TODO debug remove
+        contacts_ids = postprocessing.__get_electrodes_contacts_ids(contacts, labels, ct_center_world)
+    
     intercontact_dist_world = utils.estimate_intercontact_distance(contacts)
     
     ### Validation: retrieving stats about distance error
@@ -120,8 +133,7 @@ def main():
     log("Saving results")
     contacts_vox = ct_object.convert_world_to_vox(contacts)
     intercontact_dist_vox = utils.estimate_intercontact_distance(contacts)
-    if APPLY_POSTPROCESSING:
-        output_csv.save_output(contacts_vox, labels, contacts_ids)
+    output_csv.save_output(contacts_vox, labels, contacts_ids)
     ct_object.save_contacts_mask(
         output_nifti_path, contacts_vox, 0.25*intercontact_dist_vox)
 

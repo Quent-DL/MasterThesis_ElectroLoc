@@ -111,7 +111,7 @@ class ElectrodeModel(ABC):
 
         ### Output:
         - proj: the projection of the point(s) onto the model. Same shape as
-        'contacts."""
+        'contacts'."""
         pass
 
     @abstractmethod
