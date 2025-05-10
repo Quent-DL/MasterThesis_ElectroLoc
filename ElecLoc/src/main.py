@@ -2,7 +2,7 @@
 import utils
 from utils import log
 import centroids_extraction
-import classification
+import classification_cc
 import postprocessing
 import validation
 import plot
@@ -25,9 +25,10 @@ NB_ELECTRODES_PER_SCAN = {
 
 
 def main():
-    # TODO Remove
+    # TODO Debug remove
     DEBUG_APPLY_POSTPROCESSING = False
-    path_suffix = "sub04"
+    DEBUG_RECOMPUTE_CONTACTS = True
+    path_suffix = "subBrainstorm01"
 
     # TODO replace hyperparameters
     ELECTRODE_THRESHOLD = 2500
@@ -62,16 +63,16 @@ def main():
     
     ### Fetching approximate contacts
     log("Extracting contacts coordinates")
-    if output_csv.are_raw_contacts_available():
-        contacts = output_csv.load_raw_contacts()
+    if not DEBUG_RECOMPUTE_CONTACTS and output_csv.are_raw_contacts_available():
+        contacts, tags_dcc = output_csv.load_raw_contacts()
     else:
-        contacts = centroids_extraction.compute_contacts_centers(
+        contacts, tags_dcc = centroids_extraction.compute_contacts_centers(
                 ct_grayscale=ct_object.ct, 
                 ct_mask=ct_object.mask, 
                 struct=centroids_extraction.__get_structuring_element('cross')
         )
         # Caching the results
-        output_csv.save_raw_contacts(contacts)
+        output_csv.save_raw_contacts(contacts, tags_dcc)
     
     ### Converting contacts to physical coordinates
     contacts = ct_object.convert_vox_to_world(contacts)
@@ -82,10 +83,8 @@ def main():
 
     ### Segmenting contacts into electrodes
     log("Classifying contacts to electrodes")
-    labels, models = classification.classify_electrodes(
-        contacts, n_electrodes, 
-        model_cls=SegmentElectrodeModel,
-    )
+    labels, models = classification_cc.classify_centroids(
+        contacts, tags_dcc)
 
     ### Postprocessing
     log("Post-processing results")

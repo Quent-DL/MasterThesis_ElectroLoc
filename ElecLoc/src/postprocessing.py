@@ -233,6 +233,8 @@ def postprocess(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, ElectrodeModel]:
     """TODO write documentation"""
 
+    raise RuntimeError("TODO: assert that len(models) matches with elec_info, if given.")
+
     if intercontact_distance is None:
         intercontact_distance = utils.estimate_intercontact_distance(contacts)
 

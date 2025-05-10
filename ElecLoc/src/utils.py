@@ -288,18 +288,24 @@ class OutputCSV:
         df = pd.read_csv(self.raw_contacts_path, comment="#")
         return ('ct_vox_x' in df) and ('ct_vox_y' in df) and ('ct_vox_z' in df)
 
-    def load_raw_contacts(self) -> np.ndarray:
+    def load_raw_contacts(self) -> Tuple[np.ndarray]:
         """TODO write documentation"""
         df = pd.read_csv(self.raw_contacts_path, comment="#")
         contacts_df = df[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']]
-        return contacts_df.to_numpy(dtype=np.float32)
+        contacts = contacts_df.to_numpy(dtype=np.float32)
+        tags_cc = df['cc_id'].to_numpy(dtype=int)
+        return contacts, tags_cc
 
-    def save_raw_contacts(self, contacts: np.ndarray) -> pd.DataFrame:
+    def save_raw_contacts(
+            self, contacts: np.ndarray, 
+            tags_cc: np.ndarray
+    ) -> pd.DataFrame:
         """TODO write documentation"""
         df_content = {
             'ct_vox_x': contacts[:,0],
             'ct_vox_y': contacts[:,1],
             'ct_vox_z': contacts[:,2],
+            'cc_id'   : tags_cc
         }
         df = pd.DataFrame(df_content)
         # TODO fix bug float_format round not applied

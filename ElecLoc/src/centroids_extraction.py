@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage import (binary_erosion, binary_propagation,
+from scipy.ndimage import (binary_erosion, binary_dilation, binary_propagation,
                            generate_binary_structure,
                            label, center_of_mass)
 from utils import log
@@ -100,7 +100,7 @@ def compute_contacts_centers(
         ct_grayscale: np.ndarray,
         ct_mask: np.ndarray,
         struct: np.ndarray
-) -> np.ndarray:
+) -> Tuple[np.ndarray]:
     """Extracts the coordinates of the electrodes contacts (centroids) from the 
     CT image.First, atomic connected components are extracted from the mask 
     using theultimate erosion algorithm. Then, the center of mass of each 
@@ -116,38 +116,68 @@ def compute_contacts_centers(
     
     ### Output:
     - contacts_com: an array of shape (NC,3) that contains the 3D coordinates 
-    of all NC contacts identified."""
+    of all NC contacts identified.
+    - tags_cc: the id of the connected component of each detected contact. 
+    Shape (NC,)."""
 
-    # Identifies the connected components of the mask.
-    # This is done so that, for each connected component, we only
-    # manipulate the smallest 3D arry that contains it, as to reduce
-    # the complexity of the algorithm
-    # (instead of dealing with the whole array)
+    # In this function, there are two distinct concepts to understand:
+    # the connected components in the mask obtained directly (CC) and after
+    # applying a dilation operation (DCC). 
     #
-    # Normally, one connected component should represent one contact, a section
-    # of electrode, or sections of touching electrodes.
-    connected_comps_labels, n_comps = label(ct_mask)
+    # One DCC *must* *fully* represent either an electrode or a set of
+    # intersecting electrodes. It is used to identify to which electrode
+    # (or set of electrodes) each contact belongs to.
+    #
+    # On the other hand, one CC is a subset of DCC and can either represent
+    # a single contact or a group of contacts along one or several electrodes.
+    # It is used to optimize the complexity of binary erosion;
+    # instead of applying the operation once to the full array (one very long
+    # operation), it can instead be applied to the smallest sub-array that 
+    # fully contains each CC (many very small operations)
+    # it can be applied on the small CC's instead of the full array.
+    # Overall, using CC's to perform binary erosion is more optimized.
+
+    # TODO make hyperparameter
+    R = 4
+    x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
+    struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
+
+    # TODO remove log
+    dcc_offset, ct_mask, ct_grayscale = __get_box(ct_mask, ct_grayscale)
+    dilated_mask = binary_dilation(ct_mask, struct_dil)
+    dcc_labels, n_dcc = label(dilated_mask)
 
     centroids = []
-    for cc_id in range(1, n_comps+1):    # For each connected component (CC)
-        # Keeping only the smallest array that fully contains the CC (= box)
-        comp = (connected_comps_labels == cc_id)
-        cc_offset, box_cc, box_gray = __get_box(comp, ct_grayscale)
-        # Computing ultimate erosion in that reduced array (box)
-        ult_regions = __binary_ultimate_erosion(box_cc, struct)
-        # Computing the center of mass (= COM) of all ultimately reduced 
-        # regions in the CC
-        ult_regions_labels, nb_regions = label(ult_regions)
-        centers = center_of_mass(
-            box_gray, 
-            labels=ult_regions_labels, 
-            index=range(1, nb_regions+1))
-        # Adding the COM's to the results, while accounting for the box's
-        # offset within the big initial array
-        centroids.append(np.array(centers) + cc_offset)
+    tags_dcc = []
+
+    for dcc_id in range(1, n_dcc+1):
+        # Computing the CC's within that DCC
+        dcc_mask = dcc_labels == dcc_id
+        cc_labels, n_cc = label(ct_mask & dcc_mask)
+
+        for cc_id in range(1, n_cc+1):    # For each CC
+            # Keeping only the smallest array that fully contains the CC (= box)
+            cc_mask = (cc_labels == cc_id)
+            cc_offset, box_cc, box_gray = __get_box(cc_mask, ct_grayscale)
+            # Computing ultimate erosion in that box
+            ult_regions = __binary_ultimate_erosion(box_cc, struct)
+            # Computing the center of mass (= COM) of all ultimately reduced 
+            # regions in the CC
+            ult_regions_labels, nb_regions = label(ult_regions)
+            centers = center_of_mass(
+                box_gray, 
+                labels=ult_regions_labels, 
+                index=range(1, nb_regions+1))
+            # Adding the COM's to the results, while accounting for the box's
+            # offset within the big initial array
+            centroids.append(np.array(centers) + cc_offset + dcc_offset)
+            # Adding the DCC id of the centroids detected in this CC
+            tags_dcc += [dcc_id]*len(centers)
 
     all_centroids = np.concatenate(centroids, dtype=np.float32)
+    tags_dcc = np.array(tags_dcc, dtype=int)
 
     # Sorting along arbitrary criterion to guarantee non-stochasting 
     # ordering of the contacts
-    return all_centroids[np.lexsort(keys=all_centroids.T)]
+    ordered_indices = np.lexsort(keys=all_centroids.T)
+    return all_centroids[ordered_indices], tags_dcc[ordered_indices]
