@@ -69,7 +69,7 @@ def main():
         contacts, tags_dcc = centroids_extraction.compute_contacts_centers(
                 ct_grayscale=ct_object.ct, 
                 ct_mask=ct_object.mask, 
-                struct=centroids_extraction.__get_structuring_element('cross')
+                struct=centroids_extraction._get_structuring_element('slice_cross')
         )
         # Caching the results
         output_csv.save_raw_contacts(contacts, tags_dcc)

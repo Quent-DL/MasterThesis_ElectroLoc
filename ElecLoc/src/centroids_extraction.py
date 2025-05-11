@@ -10,6 +10,11 @@ import typing
 def __get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
+    elif type == 'slice_cross':
+        struct = np.zeros((3,3,1), dtype=bool)
+        struct[1,:,:] = 1
+        struct[:,1,:] = 1
+        return struct
     elif type == 'cross':
         return generate_binary_structure(3, 1)
     else:
