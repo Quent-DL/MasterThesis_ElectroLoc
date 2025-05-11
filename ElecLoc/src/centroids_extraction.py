@@ -7,7 +7,12 @@ from typing import Tuple
 import typing
 
 
-def __get_structuring_element(type='cross'):
+# TODO debug remove
+from plot import ElectrodePlotter
+DEBUG_PLOT = False
+
+
+def _get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
     elif type == 'slice_cross':
@@ -19,7 +24,8 @@ def __get_structuring_element(type='cross'):
         return generate_binary_structure(3, 1)
     else:
         raise ValueError(
-            f"Structuring element type must be 'cube' or 'cross'. Got: {type}")
+            f"Structuring element type must be 'cube', 'slice_cross', "
+            "or 'cross'. Got: {type}")
     
 
 def __binary_ultimate_erosion(image: np.ndarray, struct: np.ndarray):
@@ -152,6 +158,12 @@ def compute_contacts_centers(
     dilated_mask = binary_dilation(ct_mask, struct_dil)
     dcc_labels, n_dcc = label(dilated_mask)
 
+    # TODO debug remove
+    if DEBUG_PLOT:
+        plotter = ElectrodePlotter(lambda x: x)
+        plotter.plot_ct_electrodes(ct_mask)
+        plotter.plot_ct_electrodes(dilated_mask)
+
     centroids = []
     tags_dcc = []
 
@@ -181,6 +193,11 @@ def compute_contacts_centers(
 
     all_centroids = np.concatenate(centroids, dtype=np.float32)
     tags_dcc = np.array(tags_dcc, dtype=int)
+
+    # TODO debug remove
+    if DEBUG_PLOT:
+        plotter.plot_contacts(all_centroids - dcc_offset)
+        plotter.show()
 
     # Sorting along arbitrary criterion to guarantee non-stochasting 
     # ordering of the contacts

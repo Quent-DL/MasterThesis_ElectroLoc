@@ -8,7 +8,35 @@ from typing import List, Tuple
 from itertools import combinations
 import warnings
 
-SCORE_THRESHOLD = 0.95
+
+############################
+# TODO REMOVE: DEBUG ZONE
+
+DEBUG_PRINT = False
+DEBUG_PLOT = False
+
+import pyvista as pv
+plotter = None
+
+def plot_contacts(contacts: np.ndarray) -> None:
+    if len(contacts) == 0:
+        return
+    point_cloud = pv.PolyData(contacts)
+    plotter.add_points(
+        point_cloud, 
+        point_size=7.5,
+        render_points_as_spheres=True)
+        
+def plot_tree(contacts: np.ndarray, adjacency: np.ndarray) -> None:
+    for i, row in enumerate(adjacency):
+        for j in np.where(row)[0]:
+            line = pv.Line(contacts[i], contacts[j])
+            plotter.add_mesh(line, line_width=3)
+
+# TODO REMOVE: DEBUG ZONE
+##############################
+
+SCORE_THRESHOLD = 0.98
 def _compute_score(
         models: List[SegmentElectrodeModel], 
         centroids_cc: np.ndarray, 
@@ -41,10 +69,6 @@ def _compute_score(
         sSSR += SSR_k
 
     s_R_squared = sSSR / sSST
-
-    # TODO debug remove
-    print(s_R_squared)
-    
     return s_R_squared
 
 
@@ -59,8 +83,8 @@ def _kruskal(distances: np.ndarray) -> np.ndarray:
     It is assume to be symmetrical.
     
     ### Output:
-    - edges: the boolean array of edges that have been kept in the MST.
-    Shape identical to 'distances'.
+    - edges: the boolean adjacency matrix of the tree, i.e. the
+    edges that have been kept in the MST. Shape identical to 'distances'.
     """
 
     N = distances.shape[0]
@@ -196,11 +220,21 @@ def _compute_models_in_cc(
     # Computing a tree of the connected component + removing some noise
     dist_matrix = distance_matrix(centroids_cc)    # Shape (N, N)
     edges = _kruskal(dist_matrix)                  # Shape (N, N), boolean
+
+    # TODO debug remove
+    if DEBUG_PLOT:
+        global plotter
+        plotter = pv.Plotter()
+        plot_contacts(centroids_cc)
+        plot_tree(centroids_cc, edges)
+        plotter.show()
+        print("===\n")
+
     _remove_solo_noise(edges)
 
     # Extracting the id of the leaves in centroids_cc
     degrees = edges.sum(axis=0)
-    assert 0 not in degrees, "Tree is not connected"
+    assert 0 not in degrees and len(centroids_cc) > 1, "Tree is not connected"
     leaves = np.where(degrees == 1)[0]
 
     for n_models in range(1, len(leaves)//2 + 1):
@@ -214,6 +248,13 @@ def _compute_models_in_cc(
             leaves_in_group = [leaf for pair in group for leaf in pair]
             if len(set(leaves_in_group)) == 2 * n_models:
                 valid_groups.append(group)
+
+        # TODO debug remove
+        if DEBUG_PRINT:
+            print("---" + " "*20)
+            print(f"Leaves: {len(leaves)}")
+            print(f"Models: {n_models}")
+            print(f"Groups: {len(valid_groups)}")
 
         # For each group of models, compute the models and their score
         best = {
@@ -246,9 +287,11 @@ def _compute_models_in_cc(
 
         # If a certain threshold is reached, do not compute bigger groups
         #    -> the number of models to use was found
+        if DEBUG_PRINT:
+            print("Best:", best['score'])
+
         if best['score'] > SCORE_THRESHOLD:
             # TODO debug remove
-            print("Final:", best['score'])
             return best['model_group'], best['labels']
     
     warnings.warn("No group of models has reached the "
