@@ -22,12 +22,15 @@ class ElectrodeModel(ABC):
     MIN_SAMPLES = 0
 
     @abstractmethod
-    def __init__(self, samples: np.ndarray):
+    def __init__(self, samples: np.ndarray, weights: np.ndarray=None):
         """Creates a regression model for an electrode.
         
         ### Input:
         - samples: the coordinates of the K samples used to perform regression 
         and compute the model parameters. Shape (K, 3).
+        - weights: the weight given to each point when computing the
+        regression. Shape (K,). Does not have to sum to 1. By default, all
+        points are given equal weights.
         
         ### Throws:
         - ValueError if K is insufficient to compute the number of parameters."""
@@ -182,11 +185,11 @@ class LinearElectrodeModel(ElectrodeModel):
     MIN_SAMPLES = 2
 
     @override
-    def __init__(self, samples: np.ndarray):
+    def __init__(self, samples: np.ndarray, weights: np.ndarray=None):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
             raise ValueError("Expected at least 2 samples to create model. "
                              f"Got {len(samples)}.")
-        self.recompute(samples)
+        self.recompute(samples, weights)
 
     # TODO remove if useless
     @override
@@ -302,11 +305,11 @@ class ParabolicElectrodeModel(ElectrodeModel):
     MIN_SAMPLES = 3
 
     @override
-    def __init__(self, samples: np.ndarray):
+    def __init__(self, samples: np.ndarray, weights: np.ndarray=None):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
             raise ValueError("Expected at least 3 samples to create model. "
                              f"Got {len(samples)}.")
-        self.recompute(samples)
+        self.recompute(samples, weights)
 
     # TODO remove if useless
     @override
@@ -337,9 +340,8 @@ class ParabolicElectrodeModel(ElectrodeModel):
     
     @override
     def recompute(self, samples: np.ndarray, weights: np.ndarray=None) -> None:
-        if weights != None:
-            raise ValueError("Parabolic curves do not support weights " 
-                             "during regression.\n")
+        if weights is None:
+            weights = np.ones((samples.shape[0],), dtype=float)
 
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
@@ -374,6 +376,13 @@ class ParabolicElectrodeModel(ElectrodeModel):
         #    [  0  0  0  0  0  0 tn**2  tn  1 ]]
 
         b = samples.flatten()
+
+        # Applying weights
+        vec_weights = np.repeat(weights, 3)
+        A *= vec_weights[:, np.newaxis]
+        b *= vec_weights
+
+        # Regressing the parabola
         self.coefs = np.linalg.lstsq(A, b)[0].reshape((3,3))
 
     @override
@@ -561,11 +570,11 @@ class SegmentElectrodeModel(ElectrodeModel):
     MIN_SAMPLES = 2
 
     @override
-    def __init__(self, samples: np.ndarray):
+    def __init__(self, samples: np.ndarray, weights: np.ndarray=None):
         if len(samples) < LinearElectrodeModel.MIN_SAMPLES:
             raise ValueError("Expected at least 2 samples to create model."
                              f"Got {len(samples)}.")
-        self.recompute(samples)
+        self.recompute(samples, weights)
 
     # TODO remove if useless
     @override
