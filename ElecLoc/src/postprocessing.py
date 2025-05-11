@@ -233,6 +233,7 @@ def postprocess(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, ElectrodeModel]:
     """TODO write documentation"""
 
+    # TODO Handle
     raise RuntimeError("TODO: assert that len(models) matches with elec_info, if given.")
 
     if intercontact_distance is None:
@@ -240,9 +241,13 @@ def postprocess(
 
     # ...
 
-    # Re-fitting models with new class, based on support of previous models
+    # Re-fitting models with new class, based on support of previous models.
+    # Computations are weighted to avoid overfitting.
     for k, model in enumerate(models):
-        models[k] = model_cls(contacts[labels==k])
+        inliers_k = contacts[labels==k]
+        dist = model.compute_distance(inliers_k)
+        weights = np.exp(- ( dist / (intercontact_distance/2))**2)
+        models[k] = model_cls(inliers_k, weights)
 
     # Computing the electrode-wise positional id of each contact
     positions_ids = __get_electrodes_contacts_ids(contacts, labels, ct_center)
