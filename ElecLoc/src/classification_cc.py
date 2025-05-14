@@ -27,11 +27,13 @@ def plot_contacts(contacts: np.ndarray) -> None:
         point_size=7.5,
         render_points_as_spheres=True)
         
-def plot_tree(contacts: np.ndarray, adjacency: np.ndarray) -> None:
+def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
+              color: str=None, width_factor=1) -> None:
     for i, row in enumerate(adjacency):
         for j in np.where(row)[0]:
             line = pv.Line(contacts[i], contacts[j])
-            plotter.add_mesh(line, line_width=3)
+            plotter.add_mesh(
+                line, color=color, line_width=width_factor*3)
 
 # TODO REMOVE: DEBUG ZONE
 ##############################
@@ -122,7 +124,7 @@ def _kruskal(distances: np.ndarray) -> np.ndarray:
 
     return edges
 
-def _remove_solo_noise(edges: np.ndarray) -> np.ndarray:
+def _remove_solo_noise(edges: np.ndarray) -> None:
     """Slightly rearranges a tree such that all leaves connected to
     vertices of degree 3 are not leaves anymore.
     
@@ -158,6 +160,48 @@ def _remove_solo_noise(edges: np.ndarray) -> np.ndarray:
                 # so that i is not a leaf anymore (linked to j and k)
                 edges[j,k] = False; edges[k,j] = False
                 edges[i,k] = True;  edges[k, i] = True
+
+def _remove_big_angles(edges: np.ndarray, centroids_cc: np.ndarray,
+                       max_angle: float) -> np.ndarray:
+    """TODO write documentation.
+    Removes edges based on alignment.
+    An edge E is removed from edges if all other edges touching
+    any of the two incident nodes form an angle with E outside the range 
+    [180-max_angle, 180].
+    'max_angle' expressed in edgrees."""
+    copy_edges = np.zeros_like(edges)
+    # centroid.shape is (3,). neighb_edges.shape is (N,) 
+    for i in range(len(edges)):
+        neighb_edges = edges[i]
+        neighb_global_indices = np.where(neighb_edges)[0]
+
+        # This algorithm only applies to vertices with
+        # at least two neighbors
+        if len(neighb_global_indices) < 2:
+            copy_edges[neighb_global_indices, i] = 1
+            continue
+
+        # The vectors from vertex 'i' to its neighbors
+        vecs = (centroids_cc[neighb_global_indices] - centroids_cc[i])    # Shape (Nb, 3)
+
+        # Computing the cosine similarity between all pairs of edges
+        # among the 'Nb' edges that are incident to the vertex 'i'.
+        u = vecs[np.newaxis,:] * vecs[:,np.newaxis]    # Shape (Nb, Nb, 3)
+        nrm = np.linalg.norm(vecs, axis=-1)    # Shape (Nb,)
+        crossdot_u = np.sum(u, axis=-1)        # Shape (Nb, Nb)
+        # The cosine similarity. Shape (Nb, Nb)
+        cosines = crossdot_u / nrm[:,np.newaxis] / nrm[np.newaxis,:]
+
+        # Cutting edges that do not satisfy the angle condition
+        # with any other edge incident to vertex 'i'.
+        best_cosine = cosines.min(axis=1)    # Shape (Nb,)
+        cosine_thresh = np.cos((180-max_angle)*np.pi/180)    # negative
+        valid_local_idx = np.where(best_cosine < cosine_thresh)[0] 
+        valid_global_idx = neighb_global_indices[valid_local_idx]
+        copy_edges[valid_global_idx, i] = 1
+        copy_edges[i, valid_global_idx] = 1
+    return copy_edges
+
 
 # TODO see if useful in a separate function or if must be written inside _compute_labels
 def _compute_points_models_distances(
@@ -200,7 +244,7 @@ def _compute_labels(
 
 def _compute_models_in_cc(
         centroids_cc: np.ndarray
-) -> Tuple[List[SegmentElectrodeModel], np.ndarray]:
+) -> Tuple[np.ndarray, List[SegmentElectrodeModel]]:
     """Computes the optimal group of models from the given set of points.
     A group of model is considered optimal if it minimizes the number of
     models used while ensuring a sufficient fit to the data.
@@ -211,10 +255,10 @@ def _compute_models_in_cc(
     component. Shape (N, 3).
 
     # Outputs:
-    - models: the optimal group of models. The length is undefined and
-    contained in {1, ..., len(centroids_cc)//2}.
     - labels: the classification labels of the centroids with the
     returned models. Shape (N,).
+    - models: the optimal group of models. The length is undefined and
+    contained in {1, ..., len(centroids_cc)//2}.
     """
 
     # Computing a tree of the connected component + removing some noise
@@ -226,15 +270,19 @@ def _compute_models_in_cc(
         global plotter
         plotter = pv.Plotter()
         plot_contacts(centroids_cc)
-        plot_tree(centroids_cc, edges)
-        plotter.show()
-        print("===\n")
+        plot_tree(centroids_cc, edges, "red")
 
+    #edges = _remove_big_angles(edges, centroids_cc, 45)
     _remove_solo_noise(edges)
+
+    # TODO remove debug
+    if DEBUG_PLOT:
+        plot_tree(centroids_cc, edges, "blue", 2)
+        plotter.show()
 
     # Extracting the id of the leaves in centroids_cc
     degrees = edges.sum(axis=0)
-    assert 0 not in degrees and len(centroids_cc) > 1, "Tree is not connected"
+    #assert 0 not in degrees and len(centroids_cc) > 1, "Tree is not connected"
     leaves = np.where(degrees == 1)[0]
 
     for n_models in range(1, len(leaves)//2 + 1):
@@ -289,6 +337,7 @@ def _compute_models_in_cc(
         #    -> the number of models to use was found
         if DEBUG_PRINT:
             print("Best:", best['score'])
+            print("============")
 
         if best['score'] > SCORE_THRESHOLD:
             # TODO debug remove
@@ -298,23 +347,23 @@ def _compute_models_in_cc(
                   f"defined threshold ({SCORE_THRESHOLD}).\n"
                   "Either the threshold is too high, or something went wrong.\n"
                   f"Returning the best group anyway (score: {best['score']}).")
-    return best['model_group'], best['labels']
+    return best['labels'], best['model_group']
 
 def classify_centroids(
         centroids: np.ndarray,
         tags_dcc: np.ndarray
-):
+) -> Tuple[np.ndarray[int], List[SegmentElectrodeModel]]:
     """TODO write documentation"""
     
     all_models = []
     all_labels = -1 * np.ones((centroids.shape[0],), dtype=int)
-    for cc_id in np.unique(tags_dcc):
+    for dcc_id in np.unique(tags_dcc):
         # Computing models and labels within connected component
-        centroids_cc = centroids[tags_dcc == cc_id]
+        centroids_cc = centroids[tags_dcc == dcc_id]
         models_cc, labels_cc = _compute_models_in_cc(centroids_cc)
 
         # Converting local labels to global labels and adding new models
-        all_labels[tags_dcc == cc_id] = labels_cc + len(all_models)
+        all_labels[tags_dcc == dcc_id] = labels_cc + len(all_models)
         all_models += models_cc
 
     return all_labels, all_models

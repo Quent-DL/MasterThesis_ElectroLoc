@@ -4,7 +4,6 @@ from scipy.ndimage import (binary_erosion, binary_dilation, binary_propagation,
                            label, center_of_mass)
 from utils import log
 from typing import Tuple
-import typing
 
 
 # TODO debug remove
@@ -12,7 +11,7 @@ from plot import ElectrodePlotter
 DEBUG_PLOT = False
 
 
-def _get_structuring_element(type='cross'):
+def get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
     elif type == 'slice_cross':
@@ -107,7 +106,7 @@ def __get_box(mask: np.ndarray, *arrays: np.ndarray) -> Tuple[np.ndarray, ...]:
     return offset, *boxes
 
 
-def compute_contacts_centers(
+def extract_centroids(
         ct_grayscale: np.ndarray,
         ct_mask: np.ndarray,
         struct: np.ndarray
@@ -153,7 +152,6 @@ def compute_contacts_centers(
     x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
     struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
 
-    # TODO remove log
     dcc_offset, ct_mask, ct_grayscale = __get_box(ct_mask, ct_grayscale)
     dilated_mask = binary_dilation(ct_mask, struct_dil)
     dcc_labels, n_dcc = label(dilated_mask)

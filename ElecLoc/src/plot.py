@@ -59,12 +59,16 @@ class ElectrodePlotter:
         - func_world2vox: a function with a numpy array of shape (N, 3) for
         both the input and the output. Must also have an optional boolean 
         parameter 'apply_translation'."""
-        self.func_world2vox=  func_world2vox
+        self.func_world2vox = func_world2vox
         self.plotter = pv.Plotter()
         self.plotter.add_axes()
 
-    def update_focal_point(self, focal_pt_world: np.ndarray) -> None:
-        self.plotter.camera.focal_point = self.func_world2vox(focal_pt_world)
+    def update_focal_point(self, focal_pt: np.ndarray,
+                           convert_to_vox: bool=False) -> None:
+        if convert_to_vox:
+            focal_pt = self.func_world2vox(focal_pt)
+        self.plotter.camera.focal_point = focal_pt
+
 
     def show(self) -> None:
         """Displays all the meshes, point clouds and volumes plotted."""
@@ -74,11 +78,14 @@ class ElectrodePlotter:
             self, 
             contacts: np.ndarray, 
             color: Optional[Tuple[int]] = None,
-            size_multiplier: Optional[float] = 1) -> None:
+            size_multiplier: Optional[float] = 1,
+            convert_to_vox: bool = False) -> None:
         """TODO write documentation"""
         if len(contacts) == 0:
             return
-        point_cloud = pv.PolyData(self.func_world2vox(contacts)+VOX_CENTERING)
+        if convert_to_vox:
+            contacts = self.func_world2vox(contacts)
+        point_cloud = pv.PolyData(contacts+VOX_CENTERING)
         self.plotter.add_points(
             point_cloud, 
             point_size=5.0*size_multiplier, 
@@ -107,9 +114,11 @@ class ElectrodePlotter:
                               opacity=0.075)
 
     def plot_colored_contacts(self, contacts: np.ndarray, 
-                              labels: np.ndarray) -> None:
+                              labels: np.ndarray,
+                              convert_to_vox:bool = False) -> None:
         """TODO write documentation"""
-        contacts = self.func_world2vox(contacts)+VOX_CENTERING
+        if convert_to_vox:
+            contacts = self.func_world2vox(contacts)+VOX_CENTERING
         # Iterate over each electrode and add its contacts to the plotter
         for k, e_id in enumerate(np.unique(labels)):
             color = get_color(k)
@@ -118,12 +127,16 @@ class ElectrodePlotter:
                 point_cloud, color=color, point_size=8, 
                 render_points_as_spheres=True)
 
-    def plot_differences(self, matched_DT, matched_GT) -> None:
+    def plot_differences(self, matched_DT, matched_GT,
+                         convert_to_vox: bool=False) -> None:
         """TODO write documentation"""
+        if convert_to_vox:
+            matched_DT = self.func_world2vox(matched_DT)
+            matched_GT = self.func_world2vox(matched_GT)
         for dt, gt in zip(matched_DT, matched_GT):
             line = pv.Line(
-                self.func_world2vox(dt)+VOX_CENTERING, 
-                self.func_world2vox(gt)+VOX_CENTERING)
+                dt + VOX_CENTERING, 
+                gt + VOX_CENTERING)
             self.plotter.add_mesh(line, color=(0, 0, 0), line_width=1)
 
     def plot_electrodes_models(self, models: List[ElectrodeModel]) -> None:
@@ -135,25 +148,34 @@ class ElectrodePlotter:
             self.plot_segment_electrodes(models)
 
     def plot_linear_electrodes(
-            self, models: List[LinearElectrodeModel]) -> None:
+            self, models: List[LinearElectrodeModel],
+            convert_to_vox: bool=True) -> None:
         for k, model in enumerate(models):
             color = get_color(k)
-            p = self.func_world2vox(model.point)+VOX_CENTERING
-            v = self.func_world2vox(model.direction, apply_translation=False)
+            if convert_to_vox:
+                p = self.func_world2vox(model.point)+VOX_CENTERING
+                v = self.func_world2vox(model.direction, apply_translation=False)
+            else:
+                p = model.point+VOX_CENTERING
+                v = model.direction
             # TODO replace 50 by maningful values
             a, b = p - 50*v, p + 50*v
             line = pv.Line(a, b)
             self.plotter.add_mesh(line, color=color, line_width=3)
 
     def plot_parabolic_electrodes(
-            self, models: List[ParabolicElectrodeModel]) -> None:
+            self, models: List[ParabolicElectrodeModel],
+            convert_to_vox: bool=True) -> None:
         for k, model in enumerate(models):
             # Creating a voxel-space copy of the model
             model_plot = copy(model)
             v, u, c = model.coefs.T
-            v = self.func_world2vox(v, apply_translation=False)
-            u = self.func_world2vox(u, apply_translation=False)
-            c = self.func_world2vox(c) + VOX_CENTERING
+            if convert_to_vox:
+                v = self.func_world2vox(v, apply_translation=False)
+                u = self.func_world2vox(u, apply_translation=False)
+                c = self.func_world2vox(c) + VOX_CENTERING
+            else:
+                c += VOX_CENTERING
             model_plot.coefs = np.stack([v, u, c], axis=-1)
 
             # Plotting
@@ -165,11 +187,16 @@ class ElectrodePlotter:
             self.plotter.add_mesh(spline, color=color, line_width=3)
 
     def plot_segment_electrodes(
-            self, models: List[SegmentElectrodeModel]) -> None:
+            self, models: List[SegmentElectrodeModel],
+            convert_to_vox: bool=True) -> None:
         for k, model in enumerate(models):
             color = get_color(k)
-            p = self.func_world2vox(model.point) + VOX_CENTERING
-            v = self.func_world2vox(model.direction, apply_translation=False)
+            if convert_to_vox:
+                p = self.func_world2vox(model.point) + VOX_CENTERING
+                v = self.func_world2vox(model.direction, apply_translation=False)
+            else:
+                p = model.point + VOX_CENTERING
+                v = model.direction
             a, b = p + model.t_a*v, p + model.t_b*v
             line = pv.Line(a, b)
             self.plotter.add_mesh(line, color=color, line_width=3)

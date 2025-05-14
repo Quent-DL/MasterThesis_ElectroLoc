@@ -3,7 +3,7 @@ from numpy import cross
 from numpy.linalg import norm
 import nibabel as nib
 from datetime import datetime
-from typing import Literal, Tuple, Optional
+from typing import Literal, Tuple, Optional, Self
 import pandas as pd
 import os
 from sklearn.linear_model import LinearRegression
@@ -137,13 +137,16 @@ def estimate_intercontact_distance(
 
 
 class NibCTWrapper:
-    def __init__(self, ct_path: str, ct_brainmask_path: str):
+    def __init__(self, ct_path: str, ct_brainmask_path: str=None):
         # Thresholding and skull-stripping CT
         nib_ct = nib.load(ct_path)
 
         # The arrays of the CT and brain mask
         self.ct   = nib_ct.get_fdata()
-        self.mask = nib.load(ct_brainmask_path).get_fdata().astype(bool)
+        if ct_brainmask_path is not None:
+            self.mask = nib.load(ct_brainmask_path).get_fdata().astype(bool)
+        else:
+            self.mask = np.ones_like(self.ct, dtype=bool)
 
         # Considering that voxels may not be square but rectangular
         # (this info is stored in the file's affine matrix)
@@ -273,81 +276,63 @@ class NibCTWrapper:
         nib.save(img, path)
 
 
-class OutputCSV:
-    def __init__(self, output_path: str, raw_contacts_path: str=None, ):
-        """TODO write documentation"""
-        # TODO
-        self.raw_contacts_path = raw_contacts_path
-        self.output_path   = output_path
+class PrecompWrapper:
+    _VOX_KEYS = ['vox_x', 'vox_y', 'vox_z']
+    _TAG_DCC_KEY = 'dcc_id'
 
-    def are_raw_contacts_available(self) -> bool:
+    def __init__(self, path: Optional[str]=None):
         """TODO write documentation"""
-        if (self.raw_contacts_path is None 
-                or not os.path.exists(self.raw_contacts_path)):
+        self.path = path
+
+    def can_be_loaded(self) -> bool:
+        """TODO write documentation"""
+        if (self.path is None 
+                or not os.path.exists(self.path)):
             return False
-        df = pd.read_csv(self.raw_contacts_path, comment="#")
-        return ('ct_vox_x' in df) and ('ct_vox_y' in df) and ('ct_vox_z' in df)
+        df = pd.read_csv(self.path, comment="#", nrows=0)
+        all_keys_present = True
+        for key in self._VOX_KEYS:
+            all_keys_present &= (key in df)
+        return all_keys_present
 
-    def load_raw_contacts(self) -> Tuple[np.ndarray]:
+    def load_precomputed_centroids(self) -> Tuple[np.ndarray]:
         """TODO write documentation"""
-        df = pd.read_csv(self.raw_contacts_path, comment="#")
-        contacts_df = df[['ct_vox_x', 'ct_vox_y', 'ct_vox_z']]
-        contacts = contacts_df.to_numpy(dtype=np.float32)
-        tags_cc = df['cc_id'].to_numpy(dtype=int)
-        return contacts, tags_cc
+        df = pd.read_csv(self.path, comment="#")
+        contacts_df = df[self._VOX_KEYS]
+        contacts = contacts_df.to_numpy(dtype=float)
+        dcc_id = df[self._TAG_DCC_KEY].to_numpy(dtype=int)
+        return contacts, dcc_id
 
-    def save_raw_contacts(
-            self, contacts: np.ndarray, 
-            tags_cc: np.ndarray
-    ) -> pd.DataFrame:
+    def save_precomputed(
+            self, 
+            contacts: np.ndarray, 
+            tags_dcc: np.ndarray
+    ) -> Optional[pd.DataFrame]:
         """TODO write documentation"""
+        if self.path is None:
+            return
         df_content = {
-            'ct_vox_x': contacts[:,0],
-            'ct_vox_y': contacts[:,1],
-            'ct_vox_z': contacts[:,2],
-            'cc_id'   : tags_cc
+            self._VOX_KEYS[0]: contacts[:,0],
+            self._VOX_KEYS[1]: contacts[:,1],
+            self._VOX_KEYS[2]: contacts[:,2],
+            self._TAG_DCC_KEY  : tags_dcc
         }
         df = pd.DataFrame(df_content)
         # TODO fix bug float_format round not applied
         df.to_csv(
-            self.raw_contacts_path, 
+            self.path, 
             index=False,
             float_format=lambda f: round(f, 3))    
         return df
 
-    def save_output(
-            self, 
-            contacts: np.ndarray=None,
-            electrode_ids: np.ndarray=None, 
-            position_ids: np.ndarray=None
-    ) -> pd.DataFrame:
-        """TODO write documentation
-        
-        update content and write to file"""
-        df_content = {
-            'ct_vox_x': contacts[:,0],
-            'ct_vox_y': contacts[:,1],
-            'ct_vox_z': contacts[:,2],
-            'e_id': electrode_ids,
-            'c_id': position_ids,
-        }
-        df = pd.DataFrame(df_content)
-        df.sort_values(
-            by=['e_id', 'c_id'], 
-            axis='index', inplace=True)
-        # TODO fix bug float_format round not applied
-        df.to_csv(
-            self.output_path, 
-            index=False,
-            float_format=lambda f: round(f, 3))
-        return df
-
 
 class ElectrodesInfo:
+    _VOX_KEYS = ['vox_x', 'vox_y', 'vox_z']
+
     def __init__(self, path):
         """Initialize an instance from the information in the given CSV file.
         The CSV file must contain the following column names:
-        - 'ct_vox_x','ct_vox_y','ct_vox_z': the voxel coordinates of the
+        - 'vox_x','vox_y','vox_z': the voxel coordinates of the
         entry points of each electrode.
         - 'nb_contacts': number of contacts on each electrode
             
@@ -358,7 +343,107 @@ class ElectrodesInfo:
         # Number of electrodes. Int.
         self.nb_electrodes = len(df)
         # Entry points. Shape (NB_ELECTRODES, 3)
-        coords_columns = ['ct_vox_x','ct_vox_y','ct_vox_z']
-        self.entry_points = df[coords_columns].to_numpy(dtype=np.float32)
+        self.entry_points = df[self._VOX_KEYS].to_numpy(dtype=float)
         # Number of contacts. Shape (NB_ELECTRODES,)
         self.nb_contacts = df['nb_contacts'].to_numpy(dtype=int)
+
+class PipelineOutput(pd.DataFrame):
+    _VOX_KEYS = ['vox_x', 'vox_y', 'vox_z']
+    _WORLD_KEYS = ['world_x', 'world_y', 'world_z']
+    _LABEL_KEY = 'electrode_id'
+    _CID_KEY = 'c_id'
+    # Only for ground truths
+    _TAG_DCC_KEY = 'tag_dcc'
+
+    def __init__(self,
+                 vox_coords: Optional[np.ndarray] = None,
+                 world_coords: Optional[np.ndarray] = None,
+                 labels: Optional[np.ndarray] = None,
+                 positional_ids: Optional[np.ndarray] = None,
+                 ):
+        super().__init__()
+
+        if vox_coords is not None:
+            self.set_vox_coordinates(vox_coords)
+        if world_coords is not None:
+            self.set_world_coordinates(world_coords)
+        if labels is not None:
+            self.set_labels(labels)
+        if positional_ids is not None:
+            self.set_positional_ids(positional_ids)
+
+    @staticmethod
+    def from_csv(path: str) -> Self:
+        """TODO write documentation"""
+        all_valid_keys = (
+            PipelineOutput._VOX_KEYS 
+            + PipelineOutput._WORLD_KEYS 
+            + [PipelineOutput._LABEL_KEY]
+            + [PipelineOutput._CID_KEY]
+            + [PipelineOutput._TAG_DCC_KEY])
+
+        # New instance with a copy of the relevant content
+        instance = PipelineOutput()
+
+        df = pd.read_csv(path, comment='#')
+        for key in df.keys():
+            if key in all_valid_keys:
+                instance[key] = df[key]
+        
+        return instance
+            
+    def set_vox_coordinates(self, coords: np.ndarray) -> None:
+        """TODO write documentation"""
+        for key, values in zip(self._VOX_KEYS, coords.T):
+            self[key] = values
+
+    def get_vox_coordinates(self) -> np.ndarray:
+        """TODO write documentation"""
+        return self[self._VOX_KEYS].to_numpy(dtype=float)
+
+    def set_world_coordinates(self, coords: np.ndarray) -> None:
+        """TODO write documentation"""
+        for key, values in zip(self._WORLD_KEYS, coords.T):
+            self[key] = values
+
+    def get_world_coordinates(self) -> np.ndarray:
+        """TODO write documentation"""
+        return self[self._WORLD_KEYS].to_numpy(dtype=float)
+
+    def set_labels(self, labels: np.ndarray) -> None:
+        """TODO write documentation"""
+        # Checking that there are ways to identify the contacts
+        _nb_vox, _nb_world = 0, 0 
+        for key in self._VOX_KEYS:
+            if key in self:
+                _nb_vox += 1
+        for key in self._WORLD_KEYS:
+            if key in self:
+                _nb_world += 1
+
+        if _nb_vox == 3 or _nb_world == 3:
+                self[self._LABEL_KEY] = labels
+                self.sort_values(
+                    by=[self._LABEL_KEY], 
+                    axis='index', inplace=True)
+        else: 
+            raise RuntimeError("Labels cannot be set before any type of coordinates.")
+
+    def get_labels(self) -> np.ndarray:
+        """TODO write documentation"""
+        dtype = self[self._LABEL_KEY].dtype
+        return self[self._LABEL_KEY].to_numpy(dtype)
+    
+    def set_positional_ids(self, ids: np.ndarray) -> None:
+        """TODO write documentation"""
+        if self._LABEL_KEY in self:
+            self[self._CID_KEY] = ids
+            self.sort_values(
+                by=[self._LABEL_KEY, self._CID_KEY], 
+                axis='index', inplace=True)
+        else:
+            raise RuntimeError("Positional ids cannot be set before electrode ids (labels).")
+
+    def get_positional_ids(self) -> np.ndarray:
+        """TODO write documentation"""
+        return self[self._CID_KEY].to_numpy(dtype=int)

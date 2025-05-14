@@ -9,7 +9,7 @@ from typing import Tuple, List, Type
 from scipy.optimize import minimize
 
 
-def __sort_indices_by_contact_depth(
+def _sort_indices_by_contact_depth(
         indices: np.ndarray, 
         contacts: np.ndarray, 
         ct_center: np.ndarray
@@ -56,7 +56,7 @@ def __sort_indices_by_contact_depth(
     return sorted_indices
 
 
-def __get_electrodes_contacts_ids(
+def _get_electrodes_contacts_ids(
         contacts: np.ndarray, 
         labels: np.ndarray,
         ct_center: np.ndarray
@@ -89,7 +89,7 @@ def __get_electrodes_contacts_ids(
     for e_id in np.unique(labels):
         # index [0] below because nonzero returns a tuple of length 1
         elec_indices = np.nonzero(labels == e_id)[0]
-        sorted_indices = __sort_indices_by_contact_depth(
+        sorted_indices = _sort_indices_by_contact_depth(
             elec_indices, contacts, ct_center)
         nb_contacts = np.shape(elec_indices)[0]
         contacts_ids[sorted_indices] = np.arange(nb_contacts)
@@ -100,7 +100,7 @@ def __get_electrodes_contacts_ids(
     return contacts_ids
 
 
-def __match_labels(
+def _match_labels(
         entry_points: np.ndarray,
         old_models: List[ElectrodeModel],
         old_labels: np.ndarray
@@ -149,7 +149,7 @@ def __match_labels(
     return new_models, new_labels
 
 
-def __model_fit_loss(
+def _model_fit_loss(
         t0: float, 
         model: ElectrodeModel, 
         contacts: np.ndarray, 
@@ -166,7 +166,8 @@ def __model_fit_loss(
     return np.sum(distances**2)
 
 
-def __model_fit_apply(
+# TODO remove dependence on 'nb_contacts' -> make it optional
+def _model_fit_apply(
         models: List[ElectrodeModel], 
         contacts: np.ndarray, 
         labels: np.ndarray,
@@ -185,7 +186,7 @@ def __model_fit_apply(
         gamma = model.get_gamma(model_contacts[0], model_contacts[-1])
 
         # Defining loss function
-        loss = lambda t0: __model_fit_loss(
+        loss = lambda t0: _model_fit_loss(
             t0[0], model, model_contacts, nb_contacts[k], 
             intercontact_dist, gamma)    
         
@@ -234,7 +235,7 @@ def postprocess(
     """TODO write documentation"""
 
     # TODO Handle
-    raise RuntimeError("TODO: assert that len(models) matches with elec_info, if given.")
+    # raise RuntimeError("TODO: assert that len(models) matches with elec_info, if given.")
 
     if intercontact_distance is None:
         intercontact_distance = utils.estimate_intercontact_distance(contacts)
@@ -250,7 +251,7 @@ def postprocess(
         models[k] = model_cls(inliers_k, weights)
 
     # Computing the electrode-wise positional id of each contact
-    positions_ids = __get_electrodes_contacts_ids(contacts, labels, ct_center)
+    positions_ids = _get_electrodes_contacts_ids(contacts, labels, ct_center)
 
     # Sorting contacts by electrode id, then positional id
     order = np.lexsort(keys=(positions_ids, labels))
@@ -259,10 +260,10 @@ def postprocess(
     positions_ids = positions_ids[order]
 
     # Swapping labels ids to match nb of electrodes
-    models, labels = __match_labels(elec_info.entry_points, models, labels)
+    models, labels = _match_labels(elec_info.entry_points, models, labels)
 
-    # TODO uncomment: Mapping contacts to points along the model
-    contacts, labels, positions_ids = __model_fit_apply(
+    # Mapping contacts to points along the model
+    contacts, labels, positions_ids = _model_fit_apply(
         models, contacts, labels, elec_info.nb_contacts, intercontact_distance)
 
     return contacts, labels, positions_ids, models
