@@ -58,7 +58,7 @@ class MultimodelFittingProblem:
             scores.append((child_state, score))
 
         # Returning only the best children
-        scores.sort(key = lambda item: item[1])
+        scores.sort(key = lambda item: item[1], reverse=True)
         
         # TODO see which is best
         n_returned = max(10, len(scores) // 2)      # TODO hyperparameter
