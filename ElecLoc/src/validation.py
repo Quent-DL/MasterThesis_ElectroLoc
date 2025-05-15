@@ -199,7 +199,7 @@ def batch_validate_classification():
 
     for nib_wrapper, _, ground_truth in zip(*data):
         contacts_world = nib_wrapper.convert_vox_to_world(
-            ground_truth.get_world_coordinates())
+            ground_truth.get_vox_coordinates())
         actual_labels, _ = classification_cc.classify_centroids(
             contacts_world,
             ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int)

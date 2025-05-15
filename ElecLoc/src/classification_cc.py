@@ -2,17 +2,23 @@
 
 from utils import distance_matrix
 from electrode_models import SegmentElectrodeModel
+from bfs import MultimodelFittingProblem, breadth_first_graph_search
 
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, TypeVar
 from itertools import combinations
 import warnings
+
+
+Group = TypeVar(tuple[tuple[int, int]])
 
 
 ############################
 # TODO REMOVE: DEBUG ZONE
 
-DEBUG_PRINT = False
+import time
+
+DEBUG_PRINT = True
 DEBUG_PLOT = False
 
 import pyvista as pv
@@ -38,8 +44,8 @@ def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
 # TODO REMOVE: DEBUG ZONE
 ##############################
 
-SCORE_THRESHOLD = 0.98
-def _compute_score(
+SCORE_THRESHOLD = 98    # percent of variance explained by the models
+def _compute_sRsquared(
         models: List[SegmentElectrodeModel], 
         centroids_cc: np.ndarray, 
         labels: np.ndarray
@@ -71,7 +77,7 @@ def _compute_score(
         sSSR += SSR_k
 
     s_R_squared = sSSR / sSST
-    return s_R_squared
+    return 100 * s_R_squared
 
 
 # Generated using ChatGPT to save time
@@ -224,6 +230,7 @@ def _compute_points_models_distances(
         distances.append(model.compute_distance(centroids_cc))
     return np.stack(distances, axis=-1)
 
+
 def _compute_labels(
         centroids_cc: np.ndarray, 
         models: List[SegmentElectrodeModel]
@@ -242,9 +249,42 @@ def _compute_labels(
     labels = distances.argmin(axis=1)    # Shape (N,)
     return labels
 
-def _compute_models_in_cc(
+
+def _compute_models_from_group(
+        centroids_cc: np.ndarray[float], 
+        group: Group
+) -> tuple[np.ndarray[int], List[SegmentElectrodeModel]]:
+    models: List[SegmentElectrodeModel] = []
+    # Compute models
+    for pair in group:
+        _vertices_k = centroids_cc[np.array(pair, dtype=int)]
+        models.append(SegmentElectrodeModel(_vertices_k))
+    
+    # Compute labels (inliers) of each model 
+    # then recompute models using inliers
+    labels = _compute_labels(centroids_cc, models)
+    for k, model in enumerate(models):
+        _inliers_k = centroids_cc[labels == k]
+        model.recompute(_inliers_k)
+    
+    return labels, models
+
+
+def _score_group(
+        centroids_cc: np.ndarray[float], 
+        group: Group
+) -> float:
+    if len(group) == 0:
+        return 0
+    labels, models = _compute_models_from_group(centroids_cc, group)
+    score = _compute_sRsquared(models, centroids_cc, labels)
+
+    return score
+
+
+def _optimal_models(
         centroids_cc: np.ndarray
-) -> Tuple[np.ndarray, List[SegmentElectrodeModel]]:
+) -> Tuple[np.ndarray[int], List[SegmentElectrodeModel]]:
     """Computes the optimal group of models from the given set of points.
     A group of model is considered optimal if it minimizes the number of
     models used while ensuring a sufficient fit to the data.
@@ -254,7 +294,7 @@ def _compute_models_in_cc(
     models. These points represent all the centroids found in a same connected 
     component. Shape (N, 3).
 
-    # Outputs:
+    ### Outputs:
     - labels: the classification labels of the centroids with the
     returned models. Shape (N,).
     - models: the optimal group of models. The length is undefined and
@@ -272,8 +312,8 @@ def _compute_models_in_cc(
         plot_contacts(centroids_cc)
         plot_tree(centroids_cc, edges, "red")
 
-    #edges = _remove_big_angles(edges, centroids_cc, 45)
-    _remove_solo_noise(edges)
+    edges = _remove_big_angles(edges, centroids_cc, 45)
+    #_remove_solo_noise(edges)
 
     # TODO remove debug
     if DEBUG_PLOT:
@@ -285,6 +325,76 @@ def _compute_models_in_cc(
     #assert 0 not in degrees and len(centroids_cc) > 1, "Tree is not connected"
     leaves = np.where(degrees == 1)[0]
 
+    if DEBUG_PRINT:
+        t_start = time.perf_counter()
+    
+    bfs_problem = MultimodelFittingProblem(
+        candidates = leaves,
+        scoring_function=lambda group: _score_group(centroids_cc, group),
+        goal_score = SCORE_THRESHOLD
+    )
+
+    best_group = breadth_first_graph_search(bfs_problem)
+
+    if DEBUG_PRINT:
+        t_stop = time.perf_counter()
+        best_score = _score_group(centroids_cc, best_group)
+        nb_evaluated = bfs_problem.get_number_group_scores_computed()
+        print(f"=============[ BFS ]=============\n"
+              f"Number of leaves: {len(leaves)}\n"
+              f"Groups evaluated: {nb_evaluated}\n"
+              f"Best score found: {best_score}\n"
+              f"Time elapsed: {t_stop-t_start}")
+
+    return _compute_models_from_group(centroids_cc, best_group)
+
+    # TODO remove if useless
+    """for n_models in range(1, len(leaves)//2 + 1):
+        # Compute clusters
+        model = SpectralClustering(
+            n_clusters = n_models,
+            n_init = 10,
+            gamma = 1/(2*estimate_intercontact_distance(centroids_cc)**2),
+            affinity='rbf',
+            assign_labels='kmeans',
+            random_state=42
+        )
+        labels = model.fit_predict(centroids_cc)
+
+        if DEBUG_PLOT:
+            plotter = ElectrodePlotter(lambda x: x)
+            plotter.plot_colored_contacts(centroids_cc, labels)
+            plotter.show()
+
+        # Compute model from the inlier of each cluster
+        models: List[SegmentElectrodeModel] = []
+        for k in np.unique(labels):
+            _inliers_k = centroids_cc[labels == k]
+            models.append(
+                SegmentElectrodeModel(_inliers_k))
+
+        # Compute score of group of models
+        score = _compute_score(models, centroids_cc, labels)
+
+        # If a certain threshold is reached, do not compute bigger groups
+        #    -> the number of models to use was found
+        if DEBUG_PRINT:
+            print("---" + " "*20)
+            print(f"Models: {n_models}")
+            print(f"Score: {score}")
+
+        if score > SCORE_THRESHOLD:
+            # TODO debug remove
+            return labels, models
+    
+    warnings.warn("No group of models has reached the "
+                  f"defined threshold ({SCORE_THRESHOLD}).\n"
+                  "Either the threshold is too high, or something went wrong.\n"
+                  f"Returning the best group anyway (score: {score}).")
+    return labels, models"""
+
+    # TODO remove if useless
+    """total_nb_evaluations = 0
     for n_models in range(1, len(leaves)//2 + 1):
         # The list of all groups of all models (represented by vertices)
         # Generated using ChatGPT.
@@ -297,12 +407,7 @@ def _compute_models_in_cc(
             if len(set(leaves_in_group)) == 2 * n_models:
                 valid_groups.append(group)
 
-        # TODO debug remove
-        if DEBUG_PRINT:
-            print("---" + " "*20)
-            print(f"Leaves: {len(leaves)}")
-            print(f"Models: {n_models}")
-            print(f"Groups: {len(valid_groups)}")
+        total_nb_evaluations += len(valid_groups)
 
         # For each group of models, compute the models and their score
         best = {
@@ -311,21 +416,9 @@ def _compute_models_in_cc(
             'labels': None
         }
         for group in valid_groups:
-            models: List[SegmentElectrodeModel] = []
-            # Compute models
-            for pair in group:
-                _vertices_k = centroids_cc[np.array(pair, dtype=int)]
-                models.append(SegmentElectrodeModel(_vertices_k))
-            
-            # Compute labels (inliers) of each model 
-            # then recompute models using inliers
-            labels = _compute_labels(centroids_cc, models)
-            for k, model in enumerate(models):
-                _inliers_k = centroids_cc[labels == k]
-                model.recompute(_inliers_k)
-
-            # Compute score of group of models
-            score = _compute_score(models, centroids_cc, labels)
+            labels, models = _compute_models_from_group(
+                centroids_cc, group)
+            score = _compute_sRsquared(models, centroids_cc, labels)
             if best['score'] == None or score > best['score']:
                 best = {
                     'model_group': models,
@@ -333,21 +426,29 @@ def _compute_models_in_cc(
                     'labels': labels
                 }
 
-        # If a certain threshold is reached, do not compute bigger groups
-        #    -> the number of models to use was found
-        if DEBUG_PRINT:
-            print("Best:", best['score'])
-            print("============")
-
         if best['score'] > SCORE_THRESHOLD:
             # TODO debug remove
-            return best['model_group'], best['labels']
+            if DEBUG_PRINT:
+                t_stop = time.perf_counter()
+                print(f"==========[ FULL ]=============\n"
+                      f"Number of leaves: {len(leaves)}\n"
+                      f"Groups evaluated: {total_nb_evaluations}\n"
+                      f"Best score found: {best['score']}\n"
+                      f"Time elapsed: {t_stop-t_start}")
+            return best['labels'], best['model_group']
     
+    if DEBUG_PRINT:
+        t_stop = time.perf_counter()
+        print(f"==========[ FULL ]=============\n"
+              f"Number of leaves: {len(leaves)}\n"
+              f"Groups evaluated: {total_nb_evaluations}\n"
+              f"Best score found: {best['score']}\n"
+              f"Time elapsed: {t_stop-t_start}")
     warnings.warn("No group of models has reached the "
                   f"defined threshold ({SCORE_THRESHOLD}).\n"
                   "Either the threshold is too high, or something went wrong.\n"
                   f"Returning the best group anyway (score: {best['score']}).")
-    return best['labels'], best['model_group']
+    return best['labels'], best['model_group']"""
 
 def classify_centroids(
         centroids: np.ndarray,
@@ -360,7 +461,7 @@ def classify_centroids(
     for dcc_id in np.unique(tags_dcc):
         # Computing models and labels within connected component
         centroids_cc = centroids[tags_dcc == dcc_id]
-        models_cc, labels_cc = _compute_models_in_cc(centroids_cc)
+        labels_cc, models_cc = _optimal_models(centroids_cc)
 
         # Converting local labels to global labels and adding new models
         all_labels[tags_dcc == dcc_id] = labels_cc + len(all_models)
