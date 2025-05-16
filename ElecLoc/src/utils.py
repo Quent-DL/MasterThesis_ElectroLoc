@@ -107,7 +107,7 @@ class NibCTWrapper:
         - mask: the generated binary mask which highlights the positions
         of the contacts. Boolean array with same shape as 'self.ct'."""
 
-        # TODO fix bugy indices in this function
+        # TODO fix buggy indices in this function
 
         # Shape (L, W, H)
         contacts_mask = np.zeros_like(self.ct, dtype=bool)
@@ -432,15 +432,12 @@ def estimate_intercontact_distance(
     distance_map[range(len(distance_map)), neigh_1] = distance_map.max()
     dist_2 = distance_map.min(axis=1)
 
-    # A list of all the distances between a contact and its closest neighbors.
+    # A list of all the distances between a contact and its 2 closest neighbors.
     # Shape (2N,)
     distances_neigh = np.concatenate([dist_1, dist_2])
 
-    # TODO don't only take closest pairs (bias towards small intercontact distance)
-    # ==> Also use 2nd closest
-
     # Identifying the mode of the histogram
-    step = 0.2
+    step = 0.2    # TODO hyperparameter
     bins = np.arange(0, distances_neigh.max()+step, step)
     hist, _ = np.histogram(distances_neigh, bins)
     mode = hist.argmax()    # index of the modal bin

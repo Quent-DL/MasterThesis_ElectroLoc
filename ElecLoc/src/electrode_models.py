@@ -36,20 +36,6 @@ class ElectrodeModel(ABC):
         - ValueError if K is insufficient to compute the number of parameters."""
         raise RuntimeError(
             "ElectrodeModel is an interface and must not be instantiated.")
-    
-    # TODO remove if useless
-    @abstractmethod
-    def compute_dissimilarity(self, other: Self) -> float:
-        """Computes the dissimilarity between this model and the given one.
-        
-        ### Input:
-        - other_model: the other model.
-        
-        ### Output:
-        - dissimilarity: a positive measure of dissimilarity between the two 
-        models. A high value means that the models are very different from one 
-        another, while a value equal to zero means they are identical."""
-        pass
 
     @abstractmethod
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
@@ -191,32 +177,6 @@ class LinearElectrodeModel(ElectrodeModel):
                              f"Got {len(samples)}.")
         self.recompute(samples, weights)
 
-    # TODO remove if useless
-    @override
-    def compute_dissimilarity(self, other: Self) -> float:
-        raise RuntimeError("Deprecated")
-        if not isinstance(other, LinearElectrodeModel):
-            raise ValueError("'other' must be of type LinearElectrodeModel."\
-                             f"Got {type(other)}.")
-        p_a, v_a = self.point, self.direction
-        p_b, v_b = other.point, other.direction
-
-        # Cosine of the angle between the two directions (in range [0, 1])
-        cos_sim = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
-
-        if 1-cos_sim < 1e-8:
-            # The lines are (almost) perfectly parallel -> use a specific formula
-            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
-            dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
-        else:
-            # The angle between the line is sufficient to apply the general formula
-            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-skew-lines/
-            dist_points = (abs(np.dot(p_b-p_a, cross(v_a, v_b))) 
-                        / norm(cross(v_a, v_b)))
-
-        # Second term used to give score 0 to identical models
-        return (1 + dist_points) / (0.01 + cos_sim) - 1/(0.01+1)
-
     @override
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
         p, v = self.point, self.direction
@@ -310,28 +270,6 @@ class ParabolicElectrodeModel(ElectrodeModel):
             raise ValueError("Expected at least 3 samples to create model. "
                              f"Got {len(samples)}.")
         self.recompute(samples, weights)
-
-    # TODO remove if useless
-    @override
-    def compute_dissimilarity(self, other: Self) -> float:
-        raise RuntimeError("Deprecated")
-        if not isinstance(other, ParabolicElectrodeModel):
-            raise ValueError("'other' must be of type ParabolaElectrodeModel. "
-                             f"Got {type(other)}.")
-        
-        cosine_sim = lambda a, b: np.dot(a, b) / (norm(a) * norm(b))
-
-        v1, u1, c1 = self.coefs.T
-        v2, u2, c2 = other.coefs.T
-
-        score_c = norm(c1-c2)    # range [0, inf)
-
-        score_u = np.abs(cosine_sim(u1, u2))    # range [0, 1]
-
-        score_v = np.exp( (1 + cosine_sim(v1, v2))**4 / 16) - 1    # range [0,e-1]
-        score_v /= np.e - 1    # range [0,1]
-
-        return score_c / (score_u + score_v + 0.01) - 1/0.01
 
     @override
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
@@ -576,39 +514,13 @@ class SegmentElectrodeModel(ElectrodeModel):
                              f"Got {len(samples)}.")
         self.recompute(samples, weights)
 
-    # TODO remove if useless
-    @override
-    def compute_dissimilarity(self, other: Self) -> float:
-        raise RuntimeError("Deprecated")
-        if not isinstance(other, LinearElectrodeModel):
-            raise ValueError("'other' must be of type LinearElectrodeModel."\
-                             f"Got {type(other)}.")
-        p_a, v_a = self.point, self.direction
-        p_b, v_b = other.point, other.direction
-
-        # Cosine of the angle between the two directions (in range [0, 1])
-        cos_sim = abs(np.dot(v_a, v_b)) / (norm(v_a) * norm(v_b))
-
-        if 1-cos_sim < 1e-8:
-            # The lines are (almost) perfectly parallel -> use a specific formula
-            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-parallel-lines/
-            dist_points = norm(cross(v_a, p_b-p_a)) / norm(v_a)
-        else:
-            # The angle between the line is sufficient to apply the general formula
-            # Source: https://www.toppr.com/guides/maths/three-dimensional-geometry/distance-between-skew-lines/
-            dist_points = (abs(np.dot(p_b-p_a, cross(v_a, v_b))) 
-                        / norm(cross(v_a, v_b)))
-
-        # Second term used to give score 0 to identical models
-        return (1 + dist_points) / (0.01 + cos_sim) - 1/(0.01+1)
-
     @override
     def compute_distance(self, points: np.ndarray) -> np.ndarray:
         p, v = self.point, self.direction
 
         t = self.get_projection_t(points)
 
-        x_a, x_b = self.get_segment_nodes()
+        x_a, x_b = self._get_segment_vertices()
         distances_a = norm(points - x_a, axis=1)
         distances_b = norm(points - x_b, axis=1)
         # Src: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
@@ -652,8 +564,6 @@ class SegmentElectrodeModel(ElectrodeModel):
             raise ValueError("'other' must be of type LinearElectrodeModel."\
                              f"Got {type(other)}.")
         
-        raise RuntimeError("TODO update")
-        
         # Giving equal weights if both are zero:
         if (w_self + w_other == 0):
             w_self, w_other = 1, 1
@@ -685,9 +595,8 @@ class SegmentElectrodeModel(ElectrodeModel):
         offsets = inter_distance * np.arange(nb_points).reshape((nb_points, 1))
         return self.point + self.direction * (t0 + np.sign(gamma)*offsets)
 
-    # TODO see if useful (wrapper)
-    def get_segment_nodes(self) -> Tuple[np.ndarray]:
-        """Returns the points delimiting the segment."""
+    def _get_segment_vertices(self) -> Tuple[np.ndarray]:
+        """Quick wrapper to compute the vertices of the segment."""
         x_a = self.get_sequence(1, self.t_a, 0, 1)
         x_b = self.get_sequence(1, self.t_b, 0, 1)
         return x_a, x_b

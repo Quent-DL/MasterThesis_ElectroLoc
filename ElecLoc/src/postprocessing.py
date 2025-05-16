@@ -176,7 +176,6 @@ def _match_labels_to_entry_points(
         new_models.append(old_models[i_oldmodel])
         new_labels[old_labels == i_oldmodel] = j_entry
     
-    # TODO Debug, replace by handling the case and forcing the mapping to be bijective
     assert not -1 in new_labels, "Algo bug: Not all old labels have been updated"
 
     return new_models, new_labels

@@ -2,18 +2,13 @@
 module to quickly find the best set of models to fit the data."""
 
 
-from typing import TypeVar, Tuple, Callable, Iterable
+from typing import TypeAlias, Tuple, Callable, Iterable
 
 from collections import deque
 from itertools import combinations
 
 
-# TODO cite sources
-
-# TODO debug remove
-
-
-Pair = TypeVar(Tuple[int, int])
+Pair: TypeAlias= Tuple[int, int]
 
 
 class State:
@@ -62,7 +57,7 @@ class MultimodelFittingProblem:
 
         # To cache the priority of the states, to quickly sort the children of
         # a state. 
-        self._cache_child_prio: dict[State, float] = {}     # TODO test keep or delete
+        self._cache_child_prio: dict[State, float] = {}
 
     def children(self, state: State) -> list[State]:
         """Generic: Return the states that can be reached from the given

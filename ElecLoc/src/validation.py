@@ -227,7 +227,6 @@ def batch_validate_classification():
         ##############################
 
         # Retrieving the expected labels, and the matching predicted labels
-        # TODO validate that correct
         expected_labels = ground_truth.get_labels()
         pred_labels = match_and_swap_labels(
             expected_labels, pred_labels)

@@ -13,7 +13,7 @@ def main():
     DO_PLOT = True
     subId = "sub11"
 
-    # TODO replace hyperparameters
+    # TODO hyperparameters
     ELECTRODE_THRESHOLD = 2500
 
     ##############################

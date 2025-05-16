@@ -53,7 +53,7 @@ def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
 
 
 ##############################
-# Generating and processing a tree of points
+# Generating and processing a tree of points and points of interest for models
 
 def _kruskal(distances: np.ndarray[float]) -> np.ndarray[bool]:
     """Computes the Minimum Spanning Tree (MST) of the given undirected, 
@@ -213,7 +213,6 @@ def _points_of_interest(centroids_cc: np.ndarray[float]) -> list[int]:
 ##############################
 # Evaluating the fitness of the models
 
-# TODO see if useful in a separate function or if must be written inside _compute_labels
 def _compute_points_models_distances(
         centroids_cc: np.ndarray,
         models: List[SegmentElectrodeModel]

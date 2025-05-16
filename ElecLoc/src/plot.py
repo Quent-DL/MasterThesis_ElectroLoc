@@ -158,7 +158,7 @@ class ElectrodePlotter:
             else:
                 p = model.point
                 v = model.direction
-            # TODO replace 50 by maningful values
+            # TODO replace hard-coded 50 by meaningful values
             a, b = p - 50*v, p + 50*v
             line = pv.Line(a+VOX_CENTERING, b+VOX_CENTERING)
             self.plotter.add_mesh(line, color=color, line_width=3)
@@ -178,7 +178,7 @@ class ElectrodePlotter:
 
             # Plotting
             color = get_color(k)
-            # TODO replace hard-coded 70 by meaningful value
+            # TODO replace hard-coded 50 by meaningful value
             t = np.linspace(-50, 50, 100)
             x = model_plot.compute_position_at_t(t)
             spline = pv.Spline(x + VOX_CENTERING)
