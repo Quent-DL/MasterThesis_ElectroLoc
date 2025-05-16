@@ -67,8 +67,6 @@ def pipeline(
     centroids_world = nib_wrapper.convert_vox_to_world(centroids_vox)
     electrodes_info.entry_points = nib_wrapper.convert_vox_to_world(
         electrodes_info.entry_points)
-    ct_center_world = nib_wrapper.convert_vox_to_world(
-        np.array(nib_wrapper.ct.shape)/2)
     
     ### Segmenting contacts into electrodes
     if print_logs: log("Classifying contacts to electrodes")
@@ -76,19 +74,20 @@ def pipeline(
         centroids_world, tags_dcc)
     
     ### Postprocessing
+    # TODO add hyperparameters to function call
     if not skip_postprocessing:
         if print_logs: log("Post-processing results")
         contacts_world, labels, contacts_ids, models = postprocessing.postprocess(
             centroids_world, 
             labels, 
-            ct_center_world, 
             models, 
             electrodes_info,
-            model_cls=ParabolicElectrodeModel)
+            model_recomputation_class=ParabolicElectrodeModel, 
+            ct_center=nib_wrapper.get_center_world())
     else:
         contacts_world = centroids_world
         contacts_ids = postprocessing._get_electrodes_contacts_ids(
-            contacts_world, labels, ct_center_world)
+            contacts_world, labels, nib_wrapper.get_center_world())
         
     ### Assembling the output
     output = PipelineOutput(

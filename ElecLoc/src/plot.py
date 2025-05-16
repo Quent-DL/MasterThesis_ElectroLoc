@@ -118,13 +118,13 @@ class ElectrodePlotter:
                               convert_to_vox:bool = False) -> None:
         """TODO write documentation"""
         if convert_to_vox:
-            contacts = self.func_world2vox(contacts)+VOX_CENTERING
+            contacts = self.func_world2vox(contacts)
         # Iterate over each electrode and add its contacts to the plotter
         for k, e_id in enumerate(np.unique(labels)):
             color = get_color(k)
             point_cloud = pv.PolyData(contacts[labels == e_id])
             self.plotter.add_points(
-                point_cloud, color=color, point_size=8, 
+                point_cloud+VOX_CENTERING, color=color, point_size=8, 
                 render_points_as_spheres=True)
 
     def plot_differences(self, matched_DT, matched_GT,
@@ -153,14 +153,14 @@ class ElectrodePlotter:
         for k, model in enumerate(models):
             color = get_color(k)
             if convert_to_vox:
-                p = self.func_world2vox(model.point)+VOX_CENTERING
+                p = self.func_world2vox(model.point)
                 v = self.func_world2vox(model.direction, apply_translation=False)
             else:
-                p = model.point+VOX_CENTERING
+                p = model.point
                 v = model.direction
             # TODO replace 50 by maningful values
             a, b = p - 50*v, p + 50*v
-            line = pv.Line(a, b)
+            line = pv.Line(a+VOX_CENTERING, b+VOX_CENTERING)
             self.plotter.add_mesh(line, color=color, line_width=3)
 
     def plot_parabolic_electrodes(
@@ -173,9 +173,7 @@ class ElectrodePlotter:
             if convert_to_vox:
                 v = self.func_world2vox(v, apply_translation=False)
                 u = self.func_world2vox(u, apply_translation=False)
-                c = self.func_world2vox(c) + VOX_CENTERING
-            else:
-                c += VOX_CENTERING
+                c = self.func_world2vox(c)
             model_plot.coefs = np.stack([v, u, c], axis=-1)
 
             # Plotting
@@ -183,7 +181,7 @@ class ElectrodePlotter:
             # TODO replace hard-coded 70 by meaningful value
             t = np.linspace(-50, 50, 100)
             x = model_plot.compute_position_at_t(t)
-            spline = pv.Spline(x)
+            spline = pv.Spline(x + VOX_CENTERING)
             self.plotter.add_mesh(spline, color=color, line_width=3)
 
     def plot_segment_electrodes(
@@ -192,11 +190,11 @@ class ElectrodePlotter:
         for k, model in enumerate(models):
             color = get_color(k)
             if convert_to_vox:
-                p = self.func_world2vox(model.point) + VOX_CENTERING
+                p = self.func_world2vox(model.point)
                 v = self.func_world2vox(model.direction, apply_translation=False)
             else:
-                p = model.point + VOX_CENTERING
+                p = model.point 
                 v = model.direction
             a, b = p + model.t_a*v, p + model.t_b*v
-            line = pv.Line(a, b)
+            line = pv.Line(a+VOX_CENTERING, b+VOX_CENTERING)
             self.plotter.add_mesh(line, color=color, line_width=3)

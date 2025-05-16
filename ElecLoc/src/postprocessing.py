@@ -6,7 +6,7 @@ from electrode_models import (ElectrodeModel, SegmentElectrodeModel,
 import numpy as np
 from numpy.linalg import norm
 from sklearn.decomposition import PCA
-from typing import Tuple, List, Type
+from typing import Tuple, List, Type, Optional
 from scipy.optimize import minimize
 
 
@@ -140,7 +140,6 @@ def _get_electrodes_contacts_ids(
         nb_contacts = np.shape(elec_indices)[0]
         contacts_ids[sorted_indices] = np.arange(nb_contacts)
 
-    # TODO debug remove
     assert not np.any(contacts_ids == -1) 
 
     return contacts_ids
@@ -164,19 +163,7 @@ def _match_labels_to_entry_points(
     # Shape (n_models, n_entry_points)   -> square matrix
     distances = np.stack(distances)
 
-    # The new labels such that, if model[i] matches entry_points[j],
-    # then i = convert_to_old[j]
-    # Using stable marriage problem to find an optimal bijection between
-    # old and new labels.
-    convert_to_old = np.empty((len(old_models),), dtype=int)
-    invalid = distances.max() + 1    # Unpickable value in min or argmin
-    for _ in range(len(old_models)):
-        # picking pair with smallest distance
-        (i, j) = np.unravel_index(distances.argmin(), distances.shape)
-        # making each member of the pair unavailable for the following picks
-        distances[i,:] = invalid
-        distances[:,j] = invalid
-        convert_to_old[j] = i
+    _, entrypoint_to_oldmodel = utils.stable_marriage(distances, maximize=False)
 
     # Updating list of models
     # Source: https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
@@ -184,10 +171,10 @@ def _match_labels_to_entry_points(
     # Updating labels
     new_labels = -1 * np.ones_like(old_labels)    # -1 is a placeholder
     new_models = []
-    for j, i in enumerate(convert_to_old):
+    for j_entry, i_oldmodel in enumerate(entrypoint_to_oldmodel):
         # i is an old label, which must be replaced by j
-        new_models.append(old_models[i])
-        new_labels[old_labels == i] = j
+        new_models.append(old_models[i_oldmodel])
+        new_labels[old_labels == i_oldmodel] = j_entry
     
     # TODO Debug, replace by handling the case and forcing the mapping to be bijective
     assert not -1 in new_labels, "Algo bug: Not all old labels have been updated"
@@ -195,25 +182,8 @@ def _match_labels_to_entry_points(
     return new_models, new_labels
 
 
-def _model_fit_loss(
-        t0: float, 
-        model: ElectrodeModel, 
-        contacts: np.ndarray, 
-        nb_points: int,
-        intercontact_dist: float,
-        gamma: int
-) -> float:
-    """TODO write documentation"""
-    # Shape (N, 3)
-    targets = model.get_sequence(nb_points, t0, intercontact_dist, gamma)
-    # Distance between each point of the sequence, and its closest neighbor
-    # among 'contacts'. Shape (nb_points, len(contacts)).
-    distances = utils.distance_matrix(targets, contacts).min(axis=1)
-    return np.sum(distances**2)
-
-
 # TODO remove dependence on 'nb_contacts' -> make it optional
-def _model_fit_apply(
+def _fit_contacts_onto_models(
         models: List[ElectrodeModel], 
         contacts: np.ndarray, 
         labels: np.ndarray,
@@ -223,6 +193,23 @@ def _model_fit_apply(
     """TODO write documentation
     - Assumes electrode-wise contacts sorted by decreasing depth
     - Assumes values in 'labels' match with indices in 'nb_contacts'"""
+
+    def _model_fit_loss(
+            t0: float, 
+            model: ElectrodeModel, 
+            contacts: np.ndarray, 
+            nb_points: int,
+            intercontact_dist: float,
+            gamma: int
+    ) -> float:
+        """TODO write documentation"""
+        # Shape (N, 3)
+        targets = model.get_sequence(nb_points, t0, intercontact_dist, gamma)
+        # Distance between each point of the sequence, and its closest neighbor
+        # among 'contacts'. Shape (nb_points, len(contacts)).
+        distances = utils.distance_matrix(targets, contacts).min(axis=1)
+        return np.sum(distances**2)
+
     new_contacts      = []
     new_labels        = []
     new_positions_ids = []
@@ -272,55 +259,72 @@ def _model_fit_apply(
 def postprocess(
         contacts: np.ndarray, 
         labels: np.ndarray,
-        ct_center: np.ndarray,
         models: List[SegmentElectrodeModel],
         elec_info: ElectrodesInfo,
-        intercontact_distance: float=None,
-        model_cls: Type[ElectrodeModel] = LinearElectrodeModel
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, ElectrodeModel]:
-    """TODO write documentation"""
-
-    # TODO Handle
-    # raise RuntimeError("TODO: assert that len(models) matches with elec_info, if given.")
+        # Optional parameters
+        model_recomputation_class: Optional[Type[ElectrodeModel]] = LinearElectrodeModel,
+        ct_center: Optional[np.ndarray] = None,
+        intercontact_distance: Optional[float] = None,
+        # Hyperparameters
+        do_merge_models: bool = True,
+        do_reorder_contacts: bool = True,
+        do_recompute_contacts: bool = True
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, list[ElectrodeModel]]:
+    """TODO write documentation.
+    
+    ### Returns:
+    - contacts
+    - labels
+    - positions_ids
+    - models"""
 
     if intercontact_distance is None:
         intercontact_distance = utils.estimate_intercontact_distance(contacts)
+    if ct_center is None:
+        # TODO find better algorithm
+        ct_center = contacts.mean(axis=0)
 
     # ...
 
-    # Checking nnumber of models, and adapting them if necessary
-    print(f"Before: {len(models)}")    # TODO deubug remove
-    if len(models) < elec_info.nb_electrodes:
-        raise RuntimeError("Too few models received in postprocessing.\n"
-                           f"Expected {len(elec_info.nb_contacts)}. Got {len(models)}.\n"
-                           "Increase the classification score threshold then try again.")
-    while len(models) > elec_info.nb_electrodes:
-        models, labels = _merge_two_most_similar_models(
-            models, contacts, labels)
-    print(f"Before: {len(models)}")    # TODO debug remove
+    # Adapting the number of models to match elec_info
+    if do_merge_models:
+        if len(models) < elec_info.nb_electrodes:
+            raise RuntimeError(
+                "Too few models received in postprocessing.\n"
+                f"Expected {len(elec_info.nb_contacts)}. Got {len(models)}.\n"
+                "Increase the classification score threshold then try again.")
+        while len(models) > elec_info.nb_electrodes:
+            models, labels = _merge_two_most_similar_models(
+                models, contacts, labels)
 
     # Re-fitting models with new class, based on support of previous models.
-    # Computations are weighted to avoid overfitting.
-    for k, model in enumerate(models):
-        inliers_k = contacts[labels==k]
-        dist = model.compute_distance(inliers_k)
-        weights = np.exp(- ( dist / (intercontact_distance/2))**2)
-        models[k] = model_cls(inliers_k, weights)
+    if model_recomputation_class is not None:
+        for k, model in enumerate(models):
+            inliers_k = contacts[labels==k]
+            dist = model.compute_distance(inliers_k)
+            # Computations are weighted to avoid the overfitting of outliers.
+            weights = np.exp(- ( dist / (intercontact_distance/2))**2)
+            models[k] = model_recomputation_class(inliers_k, weights)
 
+    # Recomputing equidistant contacts along the new models
+    if do_recompute_contacts:
+        # Swapping labels ids to match those in elec_info
+        models, labels = _match_labels_to_entry_points(
+            elec_info.entry_points, models, labels)
+        # Recomputing contacts onto the model
+        contacts, labels, positions_ids = _fit_contacts_onto_models(
+            models, contacts, labels, elec_info.nb_contacts, 
+            intercontact_distance)
+    
     # Computing the electrode-wise positional id of each contact
     positions_ids = _get_electrodes_contacts_ids(contacts, labels, ct_center)
 
-    # Sorting contacts by electrode id, then positional id
-    order = np.lexsort(keys=(positions_ids, labels))
-    contacts      = contacts[order]
-    labels        = labels[order]
-    positions_ids = positions_ids[order]
-
-    # Swapping labels ids to match nb of electrodes
-    models, labels = _match_labels_to_entry_points(elec_info.entry_points, models, labels)
-
-    # Mapping contacts to points along the model
-    contacts, labels, positions_ids = _model_fit_apply(
-        models, contacts, labels, elec_info.nb_contacts, intercontact_distance)
+    # Reordering the contacts by electrode and position
+    if do_reorder_contacts:
+        # Sorting contacts by electrode id, then positional id
+        order = np.lexsort(keys=(positions_ids, labels))
+        contacts      = contacts[order]
+        labels        = labels[order]
+        positions_ids = positions_ids[order]
 
     return contacts, labels, positions_ids, models

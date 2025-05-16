@@ -13,9 +13,9 @@ _Group: TypeAlias = tuple[_Pair]
 
 # HYPERPARAMETERS
 MAX_ANGLE = 45
-SCORE_THRESHOLD = 99.5    # percentage of variance explained by the models
+SCORE_THRESHOLD = 99    # percentage of variance explained by the models
                           # to reach within each CC. 
-BFS_MAX_CHILDREN = 3
+BFS_MAX_CHILDREN = 3    # max number of children per node. Select best ones.
 
 
 

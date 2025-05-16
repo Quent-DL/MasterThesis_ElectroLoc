@@ -2,9 +2,11 @@
 results."""
 
 import pipeline
+import postprocessing
 import classification_cc
 from utils import (distance_matrix, NibCTWrapper, ElectrodesInfo, 
-                   estimate_intercontact_distance, PipelineOutput)
+                   estimate_intercontact_distance, PipelineOutput,
+                   match_and_swap_labels)
 
 import numpy as np
 import pandas as pd
@@ -18,10 +20,8 @@ SUB_IDS = [
 ]
 
 
-def get_data():
-    all_inputs        = []
-    all_elec_info     = []
-    all_ground_truths = []
+def get_data() -> list[tuple[NibCTWrapper, ElectrodesInfo, PipelineOutput]]:
+    data = []
     for subId in SUB_IDS:
         data_dir          = (f"{os.path.dirname(__file__)}\\..\\data\\{subId}\\")
         elec_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
@@ -31,16 +31,12 @@ def get_data():
         nib_wrapper = NibCTWrapper(
             os.path.join(data_dir, "in\\CT.nii.gz"), 
             os.path.join(data_dir, "in\\CTMask.nii.gz"))
-        
         elec_info = ElectrodesInfo(elec_info_path)
-
         ground_truth = PipelineOutput.from_csv(ground_truth_path)
 
-        all_inputs.append(nib_wrapper)
-        all_ground_truths.append(ground_truth)
-        all_elec_info.append(elec_info)
+        data.append((nib_wrapper, elec_info, ground_truth))
 
-    return all_inputs, all_elec_info, all_ground_truths
+    return data
 
 
 ###
@@ -153,7 +149,7 @@ def batch_validate_contacts_position():
     nb_missed   = 0
     rlvt_distances = []
 
-    for nib_wrapper, elec_info, ground_truth in zip(*data):
+    for nib_wrapper, elec_info, ground_truth in data:
         output, _  = pipeline.pipeline(nib_wrapper, elec_info,
                                        print_logs=False)
 
@@ -195,44 +191,75 @@ def batch_validate_classification():
     data = get_data()
 
     all_pred_labels   = []
+    all_pred_labels_post = []
     all_expected_labels = []
 
-    for nib_wrapper, _, ground_truth in zip(*data):
+    for nib_wrapper, elec_info, ground_truth in data:
         contacts_world = nib_wrapper.convert_vox_to_world(
             ground_truth.get_vox_coordinates())
-        pred_labels, _ = classification_cc.classify_centroids(
+
+        # Before preprocessing
+        pred_labels, models = classification_cc.classify_centroids(
             contacts_world,
             ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int)
         )
 
-        expected_labels = ground_truth.get_labels()
+        # After preprocessing
+        _, pred_labels_post, _, models_post = postprocessing.postprocess(
+            contacts_world, 
+            pred_labels, 
+            models,
+            elec_info,
+            model_recomputation_class=None,
+            # Parameters for validation: do not modify the contacts
+            do_recompute_contacts=False,
+            do_reorder_contacts=False,
+            do_merge_models=True
+        )
 
-        # TODO: ALIGNING pred and expected labels (-> create function in utils.py)
-        # 1) Compute confusion matrix
-        # 2) Match pred-expected labels using stable matching based on number
-        #        of occurences in confusion matrix
-        # 3) Change pred labels to match expected labels
+        # TODO DEBUG remove ###########
+        from plot import ElectrodePlotter
+        plotter = ElectrodePlotter(lambda x, apply_translation=False: x)
+        plotter.plot_colored_contacts(contacts_world, pred_labels_post)
+        plotter.plot_electrodes_models(models_post)
+        plotter.show()
+
+        ##############################
+
+        # Retrieving the expected labels, and the matching predicted labels
+        # TODO validate that correct
+        expected_labels = ground_truth.get_labels()
+        pred_labels = match_and_swap_labels(
+            expected_labels, pred_labels)
+        pred_labels_post = match_and_swap_labels(
+            expected_labels, pred_labels_post)
 
         all_pred_labels.append(pred_labels)
+        all_pred_labels_post.append(pred_labels_post)
         all_expected_labels.append(expected_labels)
     
-    all_pred_labels     = np.concatenate(all_pred_labels)
-    all_expected_labels = np.concatenate(all_expected_labels)
+    all_pred_labels      = np.concatenate(all_pred_labels)
+    all_pred_labels_post = np.concatenate(all_pred_labels_post)
+    all_expected_labels  = np.concatenate(all_expected_labels)
 
     print_classification_results(all_pred_labels,
+                                 all_pred_labels_post,
                                  all_expected_labels)
 
 def print_classification_results(
         all_pred_labels: np.ndarray[int],
+        all_pred_labels_post: np.ndarray[int],
         all_expected_labels: np.ndarray[int]
 ) -> None:
-    accuracy = (np.sum(all_pred_labels == all_expected_labels) 
+    accuracy = lambda all_pred: (np.sum(all_pred == all_expected_labels) 
                     / len(all_expected_labels) * 100)
     print("\n"
         "==================================================\n"
         "CENTROIDS CLASSIFICATION RESULTS\n"
         "----------------[ Metrics ]-----------------------\n"
-        f"Accuracy:  {accuracy:.3f} % \n"
+        "Accuracy:\n"
+        f" - Before postprocessing: {accuracy(all_pred_labels):.3f} % \n"
+        f" - After postprocessing:  {accuracy(all_pred_labels_post):.3f} % \n"
         "==================================================\n\n")
 
 ###

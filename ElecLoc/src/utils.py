@@ -30,6 +30,10 @@ class NibCTWrapper:
 
     def get_voxel_size(self):
         return np.abs(np.diag(self.affine[:3,:3]))
+    
+    def get_center_world(self):
+        """Returns the world coordinates of the image center"""
+        return self.convert_vox_to_world(np.array(self.ct.shape)/2)
 
     def get_zoom(self):
         """Returns the zoom to apply to the image for isotropic distances."""
@@ -479,22 +483,24 @@ def stable_marriage(preferences: np.ndarray, maximize=True) -> np.ndarray[int]:
     
     unpickable = (preferences.min()-1 if maximize
                   else preferences.max()+1)
-    preferences.optimize = (preferences.argmax if maximize
+    arg_optimize = (preferences.argmax if maximize
                             else preferences.argmin)
     
     row_to_col = - np.ones((n,), dtype=int)
     col_to_row = - np.ones((n,), dtype=int)
 
+    # Stable matching: select the best matching pair of labels,
+    # then make them unpickable for future selections
     for _ in range(n):
         # Selecting best macthing pair of labels
-        row, col = np.unravel_index(preferences.optimize() ,(n, n))
+        row, col = np.unravel_index(arg_optimize() ,(n, n))
         # Making them unpickable
         preferences[row,:] = unpickable
         preferences[:,col] = unpickable
         # Storing the pair (the actual values, not indices)
         row_to_col[row] = col
         col_to_row[col] = row
-        
+
     assert -1 not in row_to_col and -1 not in col_to_row, "Bug in algorithm"
     return row_to_col, col_to_row
     
@@ -505,9 +511,9 @@ def match_and_swap_labels(labels_reference: np.ndarray,
     
     ### Inputs:
     - labels_reference: the labels used as reference. Integer array with
-    shape (N,). Must contain number in {0, ..., X}.
+    shape (N,). Must contain number in {0, ..., X-1}.
     - labels_pred: the labels to match. Integer array with shape (N,). 
-    Must contain number in {0, ..., X}.
+    Must contain number in {0, ..., X-1}.
 
     ### Output:
     - labels_matched: a copy of 'labels_pred' where the label ids have been 
@@ -520,32 +526,18 @@ def match_and_swap_labels(labels_reference: np.ndarray,
     # In the confusion matrix (local_idx refers to the associated row within 
     # the confusion matrix, whereas label refers to the label's actual id/value)
     idx_to_val = np.union1d(labels_reference, labels_pred)
-    # Number of labels actually present in the inputs (not necessarily X+1).
-    n_labels = len(idx_to_val)
 
     # Computing the confusion matrix of the labels
     confusion = confusion_matrix(labels_reference, labels_pred)
 
-    # Stable matching: select the best matching pair of labels,
-    # then make them unpickable for future selections
-    UNPICKABLE = -1
-    matched_pairs = []
-    for _ in range(n_labels):
-        # Selecting best macthing pair of labels
-        i_ref, j_pred = np.unravel_index(
-            confusion.argmax(),
-            (n_labels, n_labels))
-        # Making them unpickable
-        confusion[i_ref,:] = UNPICKABLE
-        confusion[:,j_pred] = UNPICKABLE
-        # Storing the pair (the actual values, not indices)
-        lbl_ref = idx_to_val[i_ref]
-        lbl_pred = idx_to_val[j_pred]
-        matched_pairs.append((lbl_ref, lbl_pred))
-    
+    # local indices in the confusion matrix. Shape (Y,) with Y <= X.
+    ref_to_pred_mappings, _ = stable_marriage(confusion, maximize=True)
+
     # Reassigning the labels
     labels_matched = np.empty_like(labels_pred, dtype=int)
-    for ref, pred in matched_pairs:
-        labels_matched[labels_pred == pred] = ref
+    for local_ref, local_pred in enumerate(ref_to_pred_mappings):
+        global_ref = idx_to_val[local_ref]
+        global_pred = idx_to_val[local_pred]
+        labels_matched[labels_pred == global_pred] = global_ref
     
     return labels_matched
