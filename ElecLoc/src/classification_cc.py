@@ -1,16 +1,20 @@
 """TODO write info"""
 
-from utils import distance_matrix
+from utils import distance_matrix, estimate_intercontact_distance
 from electrode_models import SegmentElectrodeModel
 from bfs import MultimodelFittingProblem, breadth_first_graph_search
 
 import numpy as np
 from typing import List, Tuple, TypeVar
-from itertools import combinations
-import warnings
 
 
-Group = TypeVar(tuple[tuple[int, int]])
+Pair = TypeVar(tuple[int, int])
+Group = TypeVar(tuple[Pair])
+
+# HYPERPARAMETERS
+SCORE_THRESHOLD = 98    # percentage of variance explained by the models
+                        # to reach within each CC. 
+BFS_MAX_CHILDREN = 5
 
 
 ############################
@@ -18,7 +22,7 @@ Group = TypeVar(tuple[tuple[int, int]])
 
 import time
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 DEBUG_PLOT = False
 
 import pyvista as pv
@@ -44,7 +48,6 @@ def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
 # TODO REMOVE: DEBUG ZONE
 ##############################
 
-SCORE_THRESHOLD = 98    # percent of variance explained by the models
 def _compute_sRsquared(
         models: List[SegmentElectrodeModel], 
         centroids_cc: np.ndarray, 
@@ -79,9 +82,10 @@ def _compute_sRsquared(
     s_R_squared = sSSR / sSST
     return 100 * s_R_squared
 
+##############################
+# Generating and processing a tree of points
 
-# Generated using ChatGPT to save time
-def _kruskal(distances: np.ndarray) -> np.ndarray:
+def _kruskal(distances: np.ndarray[float]) -> np.ndarray[bool]:
     """Computes the Minimum Spanning Tree (MST) of the given undirected, 
     fully-connected graph with weights 'distances' using the Kruskal 
     algorithm and Union-Find.
@@ -94,6 +98,7 @@ def _kruskal(distances: np.ndarray) -> np.ndarray:
     - edges: the boolean adjacency matrix of the tree, i.e. the
     edges that have been kept in the MST. Shape identical to 'distances'.
     """
+    # Function generated using ChatGPT to save time
 
     N = distances.shape[0]
     
@@ -130,45 +135,9 @@ def _kruskal(distances: np.ndarray) -> np.ndarray:
 
     return edges
 
-def _remove_solo_noise(edges: np.ndarray) -> None:
-    """Slightly rearranges a tree such that all leaves connected to
-    vertices of degree 3 are not leaves anymore.
-    
-    Specifically, the goal is to convert all occurences of:
-                        [I]
-                         |
-        ... --- [K] --- [J] --- [M] --- ...
-        
-    where vertex I is a leaf as defined above, to:
-
-                 ------ [I]
-                 |       |
-        ... --- [K]     [J] --- [M] --- ...
-
-    where I is not a leaf anymore.
-    
-    ### Input:
-    - edges: the adjacency matrix of the tree. Shape (N, N). 
-    Assumed to be boolean.
-
-    ### Output:
-    - The function returns nothing, but 'edges' is modified in place.
-    """
-    degree = lambda idx: edges[idx].sum()
-    for i, neighs_i in enumerate(edges):
-        if degree(i) == 1:    # If i is a leaf (only one neighbor)
-            j = neighs_i.argmax()    # The int neighbor of i
-            if degree(j) == 3:
-                neighs_j = np.where(edges[j])[0]
-                # The other two neighbors of j that are not i
-                k, m = set(list(neighs_j)).difference([i])
-                # Replacing edge (j, k) by (i, k)
-                # so that i is not a leaf anymore (linked to j and k)
-                edges[j,k] = False; edges[k,j] = False
-                edges[i,k] = True;  edges[k, i] = True
-
-def _remove_big_angles(edges: np.ndarray, centroids_cc: np.ndarray,
-                       max_angle: float) -> np.ndarray:
+def _remove_big_angles(edges: np.ndarray[bool], 
+                       centroids_cc: np.ndarray[float],
+                       max_angle: float) -> np.ndarray[bool]:
     """TODO write documentation.
     Removes edges based on alignment.
     An edge E is removed from edges if all other edges touching
@@ -208,6 +177,36 @@ def _remove_big_angles(edges: np.ndarray, centroids_cc: np.ndarray,
         copy_edges[i, valid_global_idx] = 1
     return copy_edges
 
+def _remove_small_disconnect_components(
+        edges: np.ndarray[bool],
+        max_edges: int=2) -> None:
+    # Indices of the vertices whose edges have been cut
+
+    def _connected_vertices(i: int) -> np.ndarray[int]:
+        # The sets of connected vertices
+        prev_conn = np.array([], dtype=int)
+        connected = np.array([i], dtype=int)
+        while len(prev_conn) != len(connected):
+            prev_conn = connected
+            edges_to = np.where(edges[np.array(connected)].sum(axis=0))
+            connected = np.union1d(connected, edges_to)
+        return connected
+
+    # the set of vertices confirmed deleted or sufficiently connected
+    treated = set()
+
+    for i in range(len(edges)):
+        if i in treated: continue
+        connected_vertices = _connected_vertices(i)
+        if len(connected_vertices) <= max_edges:
+            edges[connected_vertices] = 0
+        treated = treated.union(connected_vertices)
+
+##############################
+
+
+##############################
+# Evaluating the fitness of the models
 
 # TODO see if useful in a separate function or if must be written inside _compute_labels
 def _compute_points_models_distances(
@@ -228,7 +227,10 @@ def _compute_points_models_distances(
     distances = []
     for model in models:
         distances.append(model.compute_distance(centroids_cc))
-    return np.stack(distances, axis=-1)
+    if len(distances) >= 1:
+        return np.stack(distances, axis=-1)
+    else:
+        return np.empty((len(centroids_cc), 0), dtype=float)
 
 
 def _compute_labels(
@@ -270,17 +272,79 @@ def _compute_models_from_group(
     return labels, models
 
 
-def _score_group(
+def _score_sRsquared_group(
         centroids_cc: np.ndarray[float], 
         group: Group
 ) -> float:
+    """TODO write documentation"""
     if len(group) == 0:
         return 0
     labels, models = _compute_models_from_group(centroids_cc, group)
-    score = _compute_sRsquared(models, centroids_cc, labels)
+    return _compute_sRsquared(models, centroids_cc, labels)
 
-    return score
 
+class InlierCounter():
+    """This class counts the approximate number of inliers of a group of models
+    using a cache mechanism. One instance of this class must be created for
+    each new set of points, i.e. for each connected component"""
+
+    def __init__(self,
+                 centroids_cc: np.ndarray[float],
+                 intercontact_dist: float):
+        # A cache for the distances between the model computed from a pair, and all centroids
+        self._cache_distances: dict[Pair, np.ndarray[float]] = {}
+        self._points = centroids_cc
+        self._icd = intercontact_dist
+
+    def _get_distances(self, group: Group) -> np.ndarray[float]:
+        # For cached pairs
+        dist_cached = []
+        # For non-cached pairs
+        models: List[SegmentElectrodeModel] = []
+        pairs_to_cache = []
+
+        for pair in group:
+            if pair in self._cache_distances:
+                # If distances from model generated from pair 
+                # are already computed, retrieve the values.
+                dist_cached.append(self._cache_distances[pair])
+            else:
+                # Generate a new model
+                _vertices_k = self._points[np.array(pair, dtype=int)]
+                models.append(SegmentElectrodeModel(_vertices_k))
+                pairs_to_cache.append(pair)
+
+        # Computing distances of the non-cached models, then caching them
+        # Shape (N, K_non_cached)
+        distances = _compute_points_models_distances(self._points, models)
+        for pair, dist in zip(pairs_to_cache, distances.T):
+            self._cache_distances[pair] = dist
+
+        # Adding distances of the cached models
+        if len(dist_cached) >= 1:
+            dist_cached = np.stack(dist_cached, axis=1)       # Shape (N, K_cached)
+        else:
+            # No models cached, Shape (N, 0)
+            dist_cached = np.empty((len(self._points), 0), dtype=float)
+        distances = np.concatenate([distances, dist_cached], axis=1)    # Shape (N, K)
+        return distances
+
+    def count_from_group(self, group: Group) -> float:
+        """TODO write documentation.
+        Computes weighted number of inliers in model"""
+
+        # Computing the final weights (accounting for all models, cached and
+        # non-cached)
+        distances = self._get_distances(group)
+        distances = distances.min(axis=1)    # Shape (N,)
+        weights = np.exp(- (distances / self._icd)**2 / 2)
+        return weights.sum()
+
+##############################
+
+
+##############################
+# Main algorithm
 
 def _optimal_models(
         centroids_cc: np.ndarray
@@ -313,7 +377,7 @@ def _optimal_models(
         plot_tree(centroids_cc, edges, "red")
 
     edges = _remove_big_angles(edges, centroids_cc, 45)
-    #_remove_solo_noise(edges)
+    _remove_small_disconnect_components(edges, 1)
 
     # TODO remove debug
     if DEBUG_PLOT:
@@ -322,23 +386,28 @@ def _optimal_models(
 
     # Extracting the id of the leaves in centroids_cc
     degrees = edges.sum(axis=0)
-    #assert 0 not in degrees and len(centroids_cc) > 1, "Tree is not connected"
     leaves = np.where(degrees == 1)[0]
+
+    icd = estimate_intercontact_distance(centroids_cc)
+
+    inlier_counter = InlierCounter(centroids_cc, icd)
 
     if DEBUG_PRINT:
         t_start = time.perf_counter()
     
     bfs_problem = MultimodelFittingProblem(
         candidates = leaves,
-        scoring_function=lambda group: _score_group(centroids_cc, group),
-        goal_score = SCORE_THRESHOLD
+        scoring_function = lambda group: _score_sRsquared_group(centroids_cc, group),
+        children_value_function = inlier_counter.count_from_group,
+        goal_score = SCORE_THRESHOLD,
+        max_n_children = BFS_MAX_CHILDREN
     )
 
     best_group = breadth_first_graph_search(bfs_problem)
 
     if DEBUG_PRINT:
         t_stop = time.perf_counter()
-        best_score = _score_group(centroids_cc, best_group)
+        best_score = _score_sRsquared_group(centroids_cc, best_group)
         nb_evaluated = bfs_problem.get_number_group_scores_computed()
         print(f"=============[ BFS ]=============\n"
               f"Number of leaves: {len(leaves)}\n"
@@ -348,107 +417,6 @@ def _optimal_models(
 
     return _compute_models_from_group(centroids_cc, best_group)
 
-    # TODO remove if useless
-    """for n_models in range(1, len(leaves)//2 + 1):
-        # Compute clusters
-        model = SpectralClustering(
-            n_clusters = n_models,
-            n_init = 10,
-            gamma = 1/(2*estimate_intercontact_distance(centroids_cc)**2),
-            affinity='rbf',
-            assign_labels='kmeans',
-            random_state=42
-        )
-        labels = model.fit_predict(centroids_cc)
-
-        if DEBUG_PLOT:
-            plotter = ElectrodePlotter(lambda x: x)
-            plotter.plot_colored_contacts(centroids_cc, labels)
-            plotter.show()
-
-        # Compute model from the inlier of each cluster
-        models: List[SegmentElectrodeModel] = []
-        for k in np.unique(labels):
-            _inliers_k = centroids_cc[labels == k]
-            models.append(
-                SegmentElectrodeModel(_inliers_k))
-
-        # Compute score of group of models
-        score = _compute_score(models, centroids_cc, labels)
-
-        # If a certain threshold is reached, do not compute bigger groups
-        #    -> the number of models to use was found
-        if DEBUG_PRINT:
-            print("---" + " "*20)
-            print(f"Models: {n_models}")
-            print(f"Score: {score}")
-
-        if score > SCORE_THRESHOLD:
-            # TODO debug remove
-            return labels, models
-    
-    warnings.warn("No group of models has reached the "
-                  f"defined threshold ({SCORE_THRESHOLD}).\n"
-                  "Either the threshold is too high, or something went wrong.\n"
-                  f"Returning the best group anyway (score: {score}).")
-    return labels, models"""
-
-    # TODO remove if useless
-    """total_nb_evaluations = 0
-    for n_models in range(1, len(leaves)//2 + 1):
-        # The list of all groups of all models (represented by vertices)
-        # Generated using ChatGPT.
-        ## All possible pairs of leaves
-        all_pairs = list(combinations(leaves, 2))
-        valid_groups: List[Tuple[Tuple]] = []
-        for group in combinations(all_pairs, n_models):
-            # Ensuring that all leaves in the group are unique
-            leaves_in_group = [leaf for pair in group for leaf in pair]
-            if len(set(leaves_in_group)) == 2 * n_models:
-                valid_groups.append(group)
-
-        total_nb_evaluations += len(valid_groups)
-
-        # For each group of models, compute the models and their score
-        best = {
-            'model_group': None,
-            'score': None,
-            'labels': None
-        }
-        for group in valid_groups:
-            labels, models = _compute_models_from_group(
-                centroids_cc, group)
-            score = _compute_sRsquared(models, centroids_cc, labels)
-            if best['score'] == None or score > best['score']:
-                best = {
-                    'model_group': models,
-                    'score': score,
-                    'labels': labels
-                }
-
-        if best['score'] > SCORE_THRESHOLD:
-            # TODO debug remove
-            if DEBUG_PRINT:
-                t_stop = time.perf_counter()
-                print(f"==========[ FULL ]=============\n"
-                      f"Number of leaves: {len(leaves)}\n"
-                      f"Groups evaluated: {total_nb_evaluations}\n"
-                      f"Best score found: {best['score']}\n"
-                      f"Time elapsed: {t_stop-t_start}")
-            return best['labels'], best['model_group']
-    
-    if DEBUG_PRINT:
-        t_stop = time.perf_counter()
-        print(f"==========[ FULL ]=============\n"
-              f"Number of leaves: {len(leaves)}\n"
-              f"Groups evaluated: {total_nb_evaluations}\n"
-              f"Best score found: {best['score']}\n"
-              f"Time elapsed: {t_stop-t_start}")
-    warnings.warn("No group of models has reached the "
-                  f"defined threshold ({SCORE_THRESHOLD}).\n"
-                  "Either the threshold is too high, or something went wrong.\n"
-                  f"Returning the best group anyway (score: {best['score']}).")
-    return best['labels'], best['model_group']"""
 
 def classify_centroids(
         centroids: np.ndarray,
