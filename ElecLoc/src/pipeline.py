@@ -76,8 +76,8 @@ def pipeline(
         centroids_world, tags_dcc)
     
     ### Postprocessing
-    if print_logs: log("Post-processing results")
     if not skip_postprocessing:
+        if print_logs: log("Post-processing results")
         contacts_world, labels, contacts_ids, models = postprocessing.postprocess(
             centroids_world, 
             labels, 

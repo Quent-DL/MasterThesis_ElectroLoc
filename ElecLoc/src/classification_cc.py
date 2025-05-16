@@ -1,20 +1,22 @@
 """TODO write info"""
 
 from utils import distance_matrix, estimate_intercontact_distance
-from electrode_models import SegmentElectrodeModel
+from electrode_models import SegmentElectrodeModel, compute_sRsquared
 from bfs import MultimodelFittingProblem, breadth_first_graph_search
 
 import numpy as np
-from typing import List, Tuple, TypeVar
+from typing import List, Tuple, TypeAlias
 
 
-Pair = TypeVar(tuple[int, int])
-Group = TypeVar(tuple[Pair])
+_Pair: TypeAlias = tuple[int, int]
+_Group: TypeAlias = tuple[_Pair]
 
 # HYPERPARAMETERS
-SCORE_THRESHOLD = 98    # percentage of variance explained by the models
-                        # to reach within each CC. 
-BFS_MAX_CHILDREN = 5
+MAX_ANGLE = 45
+SCORE_THRESHOLD = 99.5    # percentage of variance explained by the models
+                          # to reach within each CC. 
+BFS_MAX_CHILDREN = 3
+
 
 
 ############################
@@ -22,19 +24,20 @@ BFS_MAX_CHILDREN = 5
 
 import time
 
-DEBUG_PRINT = False
+DEBUG_PRINT = True
 DEBUG_PLOT = False
 
 import pyvista as pv
 plotter = None
 
-def plot_contacts(contacts: np.ndarray) -> None:
+def plot_contacts(contacts: np.ndarray, is_interest=False) -> None:
     if len(contacts) == 0:
         return
     point_cloud = pv.PolyData(contacts)
     plotter.add_points(
         point_cloud, 
-        point_size=7.5,
+        point_size=7.5 * (2 if is_interest else 1),
+        color = ("red" if is_interest else "blue"),
         render_points_as_spheres=True)
         
 def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
@@ -48,39 +51,6 @@ def plot_tree(contacts: np.ndarray, adjacency: np.ndarray,
 # TODO REMOVE: DEBUG ZONE
 ##############################
 
-def _compute_sRsquared(
-        models: List[SegmentElectrodeModel], 
-        centroids_cc: np.ndarray, 
-        labels: np.ndarray
-) -> float:
-    """Computes the overall score of the given group of models.
-    
-    ### Inputs:
-    - models: the models in the groupe to evaluate. Length can be arbitrary.
-    - centroids_cc: the points used to compute the score of each model.
-    Shape (N, 3).
-    - labels: the model to which each centroid in 'centroids_cc' has been
-    assigned. The expression 'labels[i]' returns 'k' if the i-th centroid
-    in centroids_cc has been assigned to the model contained in 'models[k]'.
-    Shape (N,).
-    
-    ### Output:
-    - score: the score of the groupe of models."""
-    sSST = 0    # the summed Total SS across all models
-    sSSR = 0    # the summed Regression SS across all models
-    for k, model in enumerate(models):
-        inliers_k = centroids_cc[labels == k]
-        center_k = np.mean(inliers_k, axis=0)
-        proj_k = model.project(inliers_k)
-
-        SST_k = np.sum(np.linalg.norm(inliers_k - center_k, axis=1)**2)
-        SSR_k = np.sum(np.linalg.norm(proj_k    - center_k, axis=1)**2)
-
-        sSST += SST_k
-        sSSR += SSR_k
-
-    s_R_squared = sSSR / sSST
-    return 100 * s_R_squared
 
 ##############################
 # Generating and processing a tree of points
@@ -135,72 +105,107 @@ def _kruskal(distances: np.ndarray[float]) -> np.ndarray[bool]:
 
     return edges
 
-def _remove_big_angles(edges: np.ndarray[bool], 
-                       centroids_cc: np.ndarray[float],
-                       max_angle: float) -> np.ndarray[bool]:
-    """TODO write documentation.
-    Removes edges based on alignment.
-    An edge E is removed from edges if all other edges touching
-    any of the two incident nodes form an angle with E outside the range 
-    [180-max_angle, 180].
-    'max_angle' expressed in edgrees."""
-    copy_edges = np.zeros_like(edges)
-    # centroid.shape is (3,). neighb_edges.shape is (N,) 
-    for i in range(len(edges)):
-        neighb_edges = edges[i]
-        neighb_global_indices = np.where(neighb_edges)[0]
+def _degrees(edges: np.ndarray[bool]) -> np.ndarray[int]:
+    return edges.sum(axis=0)
 
-        # This algorithm only applies to vertices with
-        # at least two neighbors
-        if len(neighb_global_indices) < 2:
-            copy_edges[neighb_global_indices, i] = 1
-            continue
+def _compute_cosines(vecs: np.ndarray[float]) -> np.ndarray:
+    """### Input:
+    - vecs: array of vectors. Shape (N, 3).
+    
+    ### Output:
+    - cosines: the matrix of cosines similarity between each pair of vectors.
+    Shape (N, N)."""
+    u = vecs[np.newaxis,:] * vecs[:,np.newaxis]    # Shape (N, N, 3)
+    nrm = np.linalg.norm(vecs, axis=-1)    # Shape (N,)
+    crossdot_u = np.sum(u, axis=-1)        # Shape (N, N)
+    # The cosine similarity. Shape (N, N)
+    cosines = crossdot_u / nrm[:,np.newaxis] / nrm[np.newaxis,:]
+    return cosines
 
-        # The vectors from vertex 'i' to its neighbors
-        vecs = (centroids_cc[neighb_global_indices] - centroids_cc[i])    # Shape (Nb, 3)
 
-        # Computing the cosine similarity between all pairs of edges
-        # among the 'Nb' edges that are incident to the vertex 'i'.
-        u = vecs[np.newaxis,:] * vecs[:,np.newaxis]    # Shape (Nb, Nb, 3)
-        nrm = np.linalg.norm(vecs, axis=-1)    # Shape (Nb,)
-        crossdot_u = np.sum(u, axis=-1)        # Shape (Nb, Nb)
-        # The cosine similarity. Shape (Nb, Nb)
-        cosines = crossdot_u / nrm[:,np.newaxis] / nrm[np.newaxis,:]
+def _get_leaves(edges: np.ndarray[bool]) -> np.ndarray[int]:
+    return np.where(_degrees(edges) == 1)[0]
 
-        # Cutting edges that do not satisfy the angle condition
-        # with any other edge incident to vertex 'i'.
-        best_cosine = cosines.min(axis=1)    # Shape (Nb,)
-        cosine_thresh = np.cos((180-max_angle)*np.pi/180)    # negative
-        valid_local_idx = np.where(best_cosine < cosine_thresh)[0] 
-        valid_global_idx = neighb_global_indices[valid_local_idx]
-        copy_edges[valid_global_idx, i] = 1
-        copy_edges[i, valid_global_idx] = 1
-    return copy_edges
+def _get_T_intersection_vertices(edges: np.ndarray[bool]) -> np.ndarray[int]:
+    """Returns the indices of the neighbors of the 3-way intersections."""
+    T_intersections = np.where(_degrees(edges) == 3)[0]
+    T_neighbors = np.where(edges[T_intersections].sum(axis=0) >= 1)[0]
+    return T_neighbors
 
-def _remove_small_disconnect_components(
+def _get_vertices_sudden_direction_change(
         edges: np.ndarray[bool],
-        max_edges: int=2) -> None:
-    # Indices of the vertices whose edges have been cut
-
-    def _connected_vertices(i: int) -> np.ndarray[int]:
-        # The sets of connected vertices
-        prev_conn = np.array([], dtype=int)
-        connected = np.array([i], dtype=int)
-        while len(prev_conn) != len(connected):
-            prev_conn = connected
-            edges_to = np.where(edges[np.array(connected)].sum(axis=0))
-            connected = np.union1d(connected, edges_to)
-        return connected
-
-    # the set of vertices confirmed deleted or sufficiently connected
-    treated = set()
-
+        centroids_cc: np.ndarray[float],
+        max_angle: float = 45
+) -> np.ndarray[int]:
+    """Returns the indices of all vertices with degree 2 and with sudden
+     changes of directions."""
+    degrees = _degrees(edges)
+    vertices_kept = []
+    
     for i in range(len(edges)):
-        if i in treated: continue
-        connected_vertices = _connected_vertices(i)
-        if len(connected_vertices) <= max_edges:
-            edges[connected_vertices] = 0
-        treated = treated.union(connected_vertices)
+        # Retrieving the indices of the vertices neighboing vertex 'i'. Shape (N,).
+        neighb_global_indices = np.where(edges[i])[0]
+
+        # Only vertices with degree 2 concerned
+        if len(neighb_global_indices) != 2: continue
+
+        # Computing the angle formed by the two neighboring edges around vertex 'i'.
+        vecs = (centroids_cc[neighb_global_indices] - centroids_cc[i])    # Shape (N, 3).
+        cosine_angle = _compute_cosines(vecs)[0,1]
+
+        # In a pertfectly straight electrode, the cosine is close to -1
+        # because both edges incident to 'i' point to opposite directions
+        # (away from vertex 'i')
+        cosine_max = np.cos((180-max_angle)*np.pi/180)    # negative value
+        is_flat = cosine_angle < cosine_max
+
+        # Detecting sudden changes of direction
+        if not is_flat:
+            vertices_kept.append(i)
+
+        return np.array(vertices_kept, dtype=int)
+    
+def _points_of_interest(centroids_cc: np.ndarray[float]) -> list[int]:
+    """Retrieves points that are candidates for being the end point of
+    an electrode, even in a context with intersecting or close electrodes.
+    
+    ### Input:
+    - centroids_cc: the centroids of the electrodes. Shape (N, 3).
+    
+    ### Output:
+    - indices: the indices in 'centroids_cc' of the points that are candidates."""
+    
+    # Computing a tree of the connected component + removing some noise
+    dist_matrix = distance_matrix(centroids_cc)    # Shape (N, N)
+    edges = _kruskal(dist_matrix)                  # Shape (N, N), boolean
+
+    # TODO debug remove
+    if DEBUG_PLOT:
+        global plotter
+        plotter = pv.Plotter()
+        plot_contacts(centroids_cc)
+        plot_tree(centroids_cc, edges, "red", 0.5)
+
+    # Processing the tree
+    idx_interest = []
+
+    idx_interest.append(_get_leaves(edges))
+    idx_interest.append(_get_T_intersection_vertices(edges))
+    idx_interest.append(_get_vertices_sudden_direction_change(
+        edges, centroids_cc, MAX_ANGLE))
+    
+    # Retrieves the union of all arrays of integers in idx_interest
+    indices_of_interest = list(np.unique(np.concatenate(idx_interest)))
+
+    # TODO remove debug
+    if DEBUG_PLOT:
+        plot_tree(centroids_cc, edges, "blue", 1)
+        plot_contacts(
+            centroids_cc[np.array(indices_of_interest)], 
+            is_interest=True)
+        plotter.show()
+
+    return indices_of_interest
 
 ##############################
 
@@ -254,7 +259,7 @@ def _compute_labels(
 
 def _compute_models_from_group(
         centroids_cc: np.ndarray[float], 
-        group: Group
+        group: _Group
 ) -> tuple[np.ndarray[int], List[SegmentElectrodeModel]]:
     models: List[SegmentElectrodeModel] = []
     # Compute models
@@ -274,13 +279,13 @@ def _compute_models_from_group(
 
 def _score_sRsquared_group(
         centroids_cc: np.ndarray[float], 
-        group: Group
+        group: _Group
 ) -> float:
     """TODO write documentation"""
     if len(group) == 0:
         return 0
     labels, models = _compute_models_from_group(centroids_cc, group)
-    return _compute_sRsquared(models, centroids_cc, labels)
+    return compute_sRsquared(models, centroids_cc, labels)
 
 
 class InlierCounter():
@@ -292,11 +297,11 @@ class InlierCounter():
                  centroids_cc: np.ndarray[float],
                  intercontact_dist: float):
         # A cache for the distances between the model computed from a pair, and all centroids
-        self._cache_distances: dict[Pair, np.ndarray[float]] = {}
+        self._cache_distances: dict[_Pair, np.ndarray[float]] = {}
         self._points = centroids_cc
         self._icd = intercontact_dist
 
-    def _get_distances(self, group: Group) -> np.ndarray[float]:
+    def _get_distances(self, group: _Group) -> np.ndarray[float]:
         # For cached pairs
         dist_cached = []
         # For non-cached pairs
@@ -329,7 +334,7 @@ class InlierCounter():
         distances = np.concatenate([distances, dist_cached], axis=1)    # Shape (N, K)
         return distances
 
-    def count_from_group(self, group: Group) -> float:
+    def count_from_group(self, group: _Group) -> float:
         """TODO write documentation.
         Computes weighted number of inliers in model"""
 
@@ -365,38 +370,16 @@ def _optimal_models(
     contained in {1, ..., len(centroids_cc)//2}.
     """
 
-    # Computing a tree of the connected component + removing some noise
-    dist_matrix = distance_matrix(centroids_cc)    # Shape (N, N)
-    edges = _kruskal(dist_matrix)                  # Shape (N, N), boolean
-
-    # TODO debug remove
-    if DEBUG_PLOT:
-        global plotter
-        plotter = pv.Plotter()
-        plot_contacts(centroids_cc)
-        plot_tree(centroids_cc, edges, "red")
-
-    edges = _remove_big_angles(edges, centroids_cc, 45)
-    _remove_small_disconnect_components(edges, 1)
-
-    # TODO remove debug
-    if DEBUG_PLOT:
-        plot_tree(centroids_cc, edges, "blue", 2)
-        plotter.show()
-
-    # Extracting the id of the leaves in centroids_cc
-    degrees = edges.sum(axis=0)
-    leaves = np.where(degrees == 1)[0]
+    indices_of_interest = _points_of_interest(centroids_cc)
 
     icd = estimate_intercontact_distance(centroids_cc)
-
     inlier_counter = InlierCounter(centroids_cc, icd)
 
     if DEBUG_PRINT:
         t_start = time.perf_counter()
     
     bfs_problem = MultimodelFittingProblem(
-        candidates = leaves,
+        candidates = indices_of_interest,
         scoring_function = lambda group: _score_sRsquared_group(centroids_cc, group),
         children_value_function = inlier_counter.count_from_group,
         goal_score = SCORE_THRESHOLD,
@@ -410,7 +393,7 @@ def _optimal_models(
         best_score = _score_sRsquared_group(centroids_cc, best_group)
         nb_evaluated = bfs_problem.get_number_group_scores_computed()
         print(f"=============[ BFS ]=============\n"
-              f"Number of leaves: {len(leaves)}\n"
+              f"Number of candidates: {len(indices_of_interest)}\n"
               f"Groups evaluated: {nb_evaluated}\n"
               f"Best score found: {best_score}\n"
               f"Time elapsed: {t_stop-t_start}")

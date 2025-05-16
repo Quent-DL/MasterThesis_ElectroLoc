@@ -702,3 +702,40 @@ class SegmentElectrodeModel(ElectrodeModel):
         # relative t of projected points.
         p, v = self.point, self.direction
         return np.dot(points-p, v) / norm(v)**2 
+    
+
+def compute_sRsquared(
+        models: list[SegmentElectrodeModel], 
+        centroids_cc: np.ndarray, 
+        labels: np.ndarray
+) -> float:
+    """Computes the overall score of the given group of models.
+    
+    ### Inputs:
+    - models: the models in the groupe to evaluate. Length can be arbitrary.
+    - centroids_cc: the points used to compute the score of each model.
+    Shape (N, 3).
+    - labels: the model to which each centroid in 'centroids_cc' has been
+    assigned. The expression 'labels[i]' returns 'k' if the i-th centroid
+    in centroids_cc has been assigned to the model contained in 'models[k]'.
+    Shape (N,).
+    
+    ### Output:
+    - score: the score of the groupe of models."""
+    sSST = 0    # the summed Total SS across all models
+    sSSR = 0    # the summed Regression SS across all models
+    for k, model in enumerate(models):
+        assert isinstance(model, SegmentElectrodeModel), (
+            "The sum of R-squared metric is only available for linear models")
+        inliers_k = centroids_cc[labels == k]
+        center_k = np.mean(inliers_k, axis=0)
+        proj_k = model.project(inliers_k)
+
+        SST_k = np.sum(np.linalg.norm(inliers_k - center_k, axis=1)**2)
+        SSR_k = np.sum(np.linalg.norm(proj_k    - center_k, axis=1)**2)
+
+        sSST += SST_k
+        sSSR += SSR_k
+
+    s_R_squared = sSSR / sSST
+    return 100 * s_R_squared

@@ -1,6 +1,7 @@
 import utils
 from utils import ElectrodesInfo
-from electrode_models import ElectrodeModel, LinearElectrodeModel
+from electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
+                              LinearElectrodeModel, compute_sRsquared)
 
 import numpy as np
 from numpy.linalg import norm
@@ -8,6 +9,51 @@ from sklearn.decomposition import PCA
 from typing import Tuple, List, Type
 from scipy.optimize import minimize
 
+
+def _merge_two_most_similar_models(
+        models: list[SegmentElectrodeModel], 
+        contacts: np.ndarray[float],
+        labels: np.ndarray[int]
+) -> tuple[list[SegmentElectrodeModel], np.ndarray[int]]:
+    """Merges two models such that the s-R-squared score of group of models
+    is the least impacted.
+
+    ### Outputs:
+    - new_models: the updated list with merged models, such that 
+    len(new_models) = len(models) - 1.
+    - new_labels: the new labels that match 'new_models'."""
+    
+    def _get_merged(idx_merged_a, idx_merged_b):
+        """Returns a copy of the models and labels, but after merging
+        two models."""
+        new_models = []
+        new_labels = np.empty_like(labels)
+        # Adding non-merged models
+        for i, model in enumerate(models):
+            if i == idx_merged_a or i == idx_merged_b:
+                continue
+            new_labels[labels == i] = len(new_models)
+            new_models.append(model)
+        # Adding new merged model
+        inliers_a_or_b = (labels == idx_merged_a) | (labels == idx_merged_b)
+        new_labels[inliers_a_or_b] = len(new_models)
+        new_models.append(SegmentElectrodeModel(contacts[inliers_a_or_b]))
+
+        return new_models, new_labels
+    
+    # Computing the score of all possible ways of merging 2 models
+    scores = []
+    for i in range(len(models)):
+        for j in range(i+1, len(models)):
+            new_models, new_labels = _get_merged(i, j)
+            score = compute_sRsquared(new_models, contacts, new_labels)
+            scores.append((new_models, new_labels, score))
+
+    # Selecting the merged pair with the best score
+    scores.sort(key=lambda item: item[2], reverse=True)
+    best_models, best_labels, _ = scores[0]
+    return best_models, best_labels
+    
 
 def _sort_indices_by_contact_depth(
         indices: np.ndarray, 
@@ -100,25 +146,25 @@ def _get_electrodes_contacts_ids(
     return contacts_ids
 
 
-def _match_labels(
+def _match_labels_to_entry_points(
         entry_points: np.ndarray,
         old_models: List[ElectrodeModel],
         old_labels: np.ndarray
 ) -> np.ndarray:
     """TODO write documentation
     - len(models) == entry_points.shape[0] == len(old_labels)"""
-    assert len(old_models) == len(entry_points), "There should be an"
-    "identical number of models and entry points. Got respectively "
-    f"{old_models} and {entry_points}. Please check your inputs."
+    assert len(old_models) == len(entry_points), ("There should be an "
+        "identical number of models and entry points.\n"
+        f"Expected {len(entry_points)}. Got {len(old_models)}.\n"
+        f"Please check your inputs.")
     # Distances between each model and each entry point
     distances = []
     for k, model in enumerate(old_models):
         distances.append(model.compute_distance(entry_points))
-
     # Shape (n_models, n_entry_points)   -> square matrix
     distances = np.stack(distances)
 
-    # The new labels such that, if model[i] matches entry_poins[j],
+    # The new labels such that, if model[i] matches entry_points[j],
     # then i = convert_to_old[j]
     # Using stable marriage problem to find an optimal bijection between
     # old and new labels.
@@ -227,7 +273,7 @@ def postprocess(
         contacts: np.ndarray, 
         labels: np.ndarray,
         ct_center: np.ndarray,
-        models: List[ElectrodeModel],
+        models: List[SegmentElectrodeModel],
         elec_info: ElectrodesInfo,
         intercontact_distance: float=None,
         model_cls: Type[ElectrodeModel] = LinearElectrodeModel
@@ -241,6 +287,17 @@ def postprocess(
         intercontact_distance = utils.estimate_intercontact_distance(contacts)
 
     # ...
+
+    # Checking nnumber of models, and adapting them if necessary
+    print(f"Before: {len(models)}")    # TODO deubug remove
+    if len(models) < elec_info.nb_electrodes:
+        raise RuntimeError("Too few models received in postprocessing.\n"
+                           f"Expected {len(elec_info.nb_contacts)}. Got {len(models)}.\n"
+                           "Increase the classification score threshold then try again.")
+    while len(models) > elec_info.nb_electrodes:
+        models, labels = _merge_two_most_similar_models(
+            models, contacts, labels)
+    print(f"Before: {len(models)}")    # TODO debug remove
 
     # Re-fitting models with new class, based on support of previous models.
     # Computations are weighted to avoid overfitting.
@@ -260,7 +317,7 @@ def postprocess(
     positions_ids = positions_ids[order]
 
     # Swapping labels ids to match nb of electrodes
-    models, labels = _match_labels(elec_info.entry_points, models, labels)
+    models, labels = _match_labels_to_entry_points(elec_info.entry_points, models, labels)
 
     # Mapping contacts to points along the model
     contacts, labels, positions_ids = _model_fit_apply(
