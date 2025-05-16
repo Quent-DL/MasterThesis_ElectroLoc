@@ -11,6 +11,10 @@ from plot import ElectrodePlotter
 DEBUG_PLOT = False
 
 
+# TODO hyperparameter
+DCC_DILATION_R = 4
+
+
 def get_structuring_element(type='cross'):
     if type == 'cube':
         return np.ones((3,3,3))
@@ -147,8 +151,7 @@ def extract_centroids(
     # it can be applied on the small CC's instead of the full array.
     # Overall, using CC's to perform binary erosion is more optimized.
 
-    # TODO make hyperparameter
-    R = 4
+    R = DCC_DILATION_R        # For short notations
     x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
     struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
 

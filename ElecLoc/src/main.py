@@ -45,7 +45,7 @@ def main():
         electrode_threshold = ELECTRODE_THRESHOLD,
         # Features
         recompute_centroids = False,
-        skip_postprocessing = True,
+        skip_postprocessing = False,
         print_logs = True
     )
     

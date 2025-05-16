@@ -194,31 +194,40 @@ def batch_validate_contacts_position():
 def batch_validate_classification():
     data = get_data()
 
-    all_actual_labels   = []
+    all_pred_labels   = []
     all_expected_labels = []
 
     for nib_wrapper, _, ground_truth in zip(*data):
         contacts_world = nib_wrapper.convert_vox_to_world(
             ground_truth.get_vox_coordinates())
-        actual_labels, _ = classification_cc.classify_centroids(
+        pred_labels, _ = classification_cc.classify_centroids(
             contacts_world,
             ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int)
         )
 
         expected_labels = ground_truth.get_labels()
 
-        all_actual_labels.append(actual_labels)
+        # TODO: ALIGNING pred and expected labels (-> create function in utils.py)
+        # 1) Compute confusion matrix
+        # 2) Match pred-expected labels using stable matching based on number
+        #        of occurences in confusion matrix
+        # 3) Change pred labels to match expected labels
+
+        all_pred_labels.append(pred_labels)
         all_expected_labels.append(expected_labels)
     
-    print_classification_results(all_actual_labels,
+    all_pred_labels     = np.concatenate(all_pred_labels)
+    all_expected_labels = np.concatenate(all_expected_labels)
+
+    print_classification_results(all_pred_labels,
                                  all_expected_labels)
 
 def print_classification_results(
-        all_actual_labels: np.ndarray[int],
+        all_pred_labels: np.ndarray[int],
         all_expected_labels: np.ndarray[int]
 ) -> None:
-    accuracy = (np.sum(all_actual_labels == all_expected_labels) 
-                    / len(all_expected_labels * 100))
+    accuracy = (np.sum(all_pred_labels == all_expected_labels) 
+                    / len(all_expected_labels) * 100)
     print("\n"
         "==================================================\n"
         "CENTROIDS CLASSIFICATION RESULTS\n"
@@ -232,8 +241,8 @@ def print_classification_results(
 
  
 def main():
-    batch_validate_contacts_position()
     batch_validate_classification()
+    batch_validate_contacts_position()
 
 
 if __name__ == '__main__':
