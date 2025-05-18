@@ -22,7 +22,7 @@ BFS_MAX_CHILDREN = 2   # max number of children per node. Select best ones.
 
 import time
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 DEBUG_PLOT = False
 
 import pyvista as pv

@@ -201,7 +201,8 @@ def batch_validate_classification():
         # Before preprocessing
         pred_labels, models = classification_cc.classify_centroids(
             contacts_world,
-            ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int)
+            ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int),
+            elec_info.nb_electrodes
         )
 
         # After preprocessing
