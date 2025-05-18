@@ -71,7 +71,7 @@ def pipeline(
     ### Segmenting contacts into electrodes
     if print_logs: log("Classifying contacts to electrodes")
     labels, models = classification_cc.classify_centroids(
-        centroids_world, tags_dcc)
+        centroids_world, tags_dcc, electrodes_info.nb_electrodes)
     
     ### Postprocessing
     # TODO add hyperparameters to function call

@@ -1,12 +1,11 @@
 """A class for performing Breadth-First-Search used by the classification
 module to quickly find the best set of models to fit the data."""
 
-
 from typing import TypeAlias, Tuple, Callable, Iterable
 
 from collections import deque
 from itertools import combinations
-
+import numpy as np
 
 Pair: TypeAlias= Tuple[int, int]
 
@@ -38,8 +37,9 @@ class MultimodelFittingProblem:
                  candidates: Iterable[int],
                  scoring_function: Callable[[Tuple[Tuple[int, int]]], float],
                  children_value_function: Callable[[Tuple[Tuple[int, int]]], float],    # TODO test keep or delete
-                 goal_score: float,
-                 max_n_children: int = 3):
+                 goal_depth: int,
+                 tags_dcc: np.ndarray[int],
+                 max_n_children: int = 3,):
         """TODO Write documentation.
         The constructor specifies the initial state, and possibly a goal
         state, if there is a unique goal. Your subclass's constructor can add
@@ -49,8 +49,20 @@ class MultimodelFittingProblem:
 
         self._func_scoring = scoring_function
         self._func_child_score = children_value_function
-        self._goal_score = goal_score
+        self._goal_depth = goal_depth
         self._max_n_children = max_n_children
+
+        # Separating the candidates into sets according to the DCC id.
+        # Only candidates from the same set can form a pair.
+        tags_dcc -= 1    # Because tags_dcc initially contains {1, ..., D}
+                         # but we want {0, ..., D-1}, to represent indices
+        nb_dcc = len(np.unique(tags_dcc))
+        self._init_cand_sets = [set() for _ in range(nb_dcc)]
+        for cand in candidates:
+            self._init_cand_sets[tags_dcc[cand]].add(cand)
+        # Opti: sorting sets by size to handle small sets first 
+        # (restricts size of graph)
+        self._init_cand_sets.sort(key= lambda cand_set: len(cand_set))
 
         # To cache the absolute score of the states
         self._cache_scores: dict[State, float] = {}
@@ -62,13 +74,47 @@ class MultimodelFittingProblem:
     def children(self, state: State) -> list[State]:
         """Generic: Return the states that can be reached from the given
         state."""
+
+        # TODO init parameter max nb of children as a list [3,3,3,2,2,1,1,1]
+        # choosing nb of children based on depth, to avoid trees too big
+        """depth = len(state.pairs)
+        if depth < 2: n_children = 3
+        elif depth < 6: n_children = 2
+        else: n_children = 1
+        # but n_children cannot exceed the hyperparam received
+        n_children = min(n_children, self._max_n_children)"""
+        n_children = self._max_n_children
+
         # Computing the available candidates for forming a new pair
+        if self.goal_test(state):
+            return []     # goal depth is last depth
+        
+        # Computing the unused candidates in each set
         used_cand = {x for pair in state.pairs for x in pair}
-        available_cand = self._candidates.difference(used_cand)
+        sets_available_cand = [cand_set.difference(used_cand) 
+                                   for cand_set in self._init_cand_sets]
+
+        # Opti: if a DCC can only fit one electrode: handle that DCC has soon 
+        # as possible -> force BFS to expand it
+        forced = False
+        for av_cand_set, init_can_set in zip(
+                sets_available_cand, self._init_cand_sets):
+            if (len(init_can_set) <= 3     # DCC contains only one electrode
+                    and len(av_cand_set) >= 2):    # and it hasn't been treated yet
+                # Force BFS to handle this electrode/DCC
+                available_pairs = combinations(av_cand_set, 2)
+                forced = True
+                break
+
+        if not forced:
+            # Use all possible pairs if no DCC is forced to be handled
+            available_pairs = set()
+            for cand_set in sets_available_cand:
+                available_pairs = available_pairs.union(combinations(cand_set, 2))
 
         # Computing all the possible childrens states and their scores
         scores: list[tuple[State, float]] = []
-        for pair in combinations(available_cand, 2):
+        for pair in available_pairs:
             child_state = State(state.pairs + (pair,))
             score = self.get_child_value(child_state)
             scores.append((child_state, score))
@@ -76,14 +122,14 @@ class MultimodelFittingProblem:
         # Returning only the best children
         scores.sort(key = lambda item: item[1], reverse=True)
         
-        return [state for (state, score) in scores[:self._max_n_children]]
+        return [state for (state, score) in scores[:n_children]]
 
     def goal_test(self, state: State) -> bool:
         """Return True if the state is a goal. The default method compares the
         state to self.goal or checks for state in self.goal if it is a
         list, as specified in the constructor. Override this method if
         checking against a single self.goal is not enough."""
-        return self.get_score(state) >= self._goal_score
+        return len(state.pairs) >= self._goal_depth
     
     def get_score(self, state: State) -> float:
         if state in self._cache_scores:
@@ -133,7 +179,7 @@ class Node:
 
     def expand(self, problem: MultimodelFittingProblem) -> list['Node']:
         """List the nodes reachable in one step from this node."""
-        return [Node(state) for state in problem.children(self.state)]
+        return [Node(state, self) for state in problem.children(self.state)]
 
     def is_better_than(self, 
                        other: 'Node', 
@@ -145,17 +191,8 @@ class Node:
                             > problem.get_score(other.state))
         self_goal = problem.goal_test(self.state)
         other_goal = problem.goal_test(other.state)
-
-        depth_better = self.depth < other.depth
-        depth_equal = self.depth == other.depth
-        depth_worse = self.depth > other.depth
         
-        return (
-            (depth_better and (better_score or self_goal))
-            or (depth_equal and better_score)
-            or (depth_worse and self_goal and not other_goal)
-        )
-
+        return (self_goal and not other_goal) or better_score
 
 def breadth_first_graph_search(problem: MultimodelFittingProblem):
     """
@@ -163,8 +200,6 @@ def breadth_first_graph_search(problem: MultimodelFittingProblem):
     single line as below:
     return graph_search(problem, FIFOQueue())
     """
-    # A limitation to stop the search
-    max_depth = 100000000
 
     # The result of the search
     best_node: Node = None
@@ -187,14 +222,9 @@ def breadth_first_graph_search(problem: MultimodelFittingProblem):
                     # Updating best found yet
                     best_node = child
 
-                    # To prevent new solutions from being
-                    # deeper than this child
-                    if problem.goal_test(child.state):
-                        max_depth = min(max_depth, child.depth)
-
-                if child.depth < max_depth:
-                    # Prevent this child from producing other children outside
-                    # the depth range
+                if not problem.goal_test(child.state):
+                    # Preventing this child from producing other children 
+                    # outside the depth upper bound
                     frontier.append(child)
 
     assert best_node is not None

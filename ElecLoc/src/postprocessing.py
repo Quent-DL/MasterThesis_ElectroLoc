@@ -202,6 +202,12 @@ def _fit_contacts_onto_models(
             gamma: int
     ) -> float:
         """TODO write documentation"""
+        #
+        # Assumption of this function: nb_points is the correct number of points.
+        # The score of this loss function is dependent on the number of points
+        # More points => higher loss (even if more points still fit the model)
+        #
+
         # Shape (N, 3)
         targets = model.get_sequence(nb_points, t0, intercontact_dist, gamma)
         # Distance between each point of the sequence, and its closest neighbor
@@ -217,6 +223,13 @@ def _fit_contacts_onto_models(
         model_contacts = contacts[labels == k]
         gamma = model.get_gamma(model_contacts[0], model_contacts[-1])
 
+        # TODO: HERE - loop over possible number of contacts,
+        # If nb_contacts is None.
+        # Add a parameter "n_contacts" to loss' lambda function
+        # and loop over possible values
+        # + modify function above because it would overfit to 1 contact
+        # to minimize loss
+
         # Defining loss function
         loss = lambda t0: _model_fit_loss(
             t0[0], model, model_contacts, nb_contacts[k], 
@@ -229,16 +242,11 @@ def _fit_contacts_onto_models(
         # Computing optimal t0* that locally minimizes loss
         # TODO: try replacing by minimize_scalar (even if no init_t0 can be given)
         optimize_res = minimize(loss, init_t0)
+
         if not optimize_res.success:
-            print("Warning: Could not optimize model k."
-                  "Using non-projected contacts instead.\n"
-                  f"Reason: {optimize_res.message}\n")
-            # Using old, unprojected contacts instead of a projected and
-            # equidistant version
-            new_contacts.append(model_contacts)
-            new_labels.append(k * np.ones((len(model_contacts),)))
-            new_positions_ids.append(np.arange(len(model_contacts)))
-            continue
+            # Ignore: even when the optimization "fails" because of precision loss,
+            # the result is still very good
+            pass
         
         t0: float = optimize_res.x[0]    
 
@@ -293,6 +301,7 @@ def postprocess(
                 f"Expected {len(elec_info.nb_contacts)}. Got {len(models)}.\n"
                 "Increase the classification score threshold then try again.")
         while len(models) > elec_info.nb_electrodes:
+            raise RuntimeError("Bug in classification. This condition should not be True.")
             models, labels = _merge_two_most_similar_models(
                 models, contacts, labels)
 
