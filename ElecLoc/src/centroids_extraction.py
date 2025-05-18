@@ -112,7 +112,7 @@ def __get_box(mask: np.ndarray, *arrays: np.ndarray) -> Tuple[np.ndarray, ...]:
 
 def extract_centroids(
         ct_grayscale: np.ndarray,
-        ct_mask: np.ndarray,
+        electrode_mask: np.ndarray,
         struct: np.ndarray
 ) -> Tuple[np.ndarray]:
     """Extracts the coordinates of the electrodes contacts (centroids) from the 
@@ -123,7 +123,7 @@ def extract_centroids(
     ### Inputs:
     - ct_grayscale: an array of shape (L, M, N) that contains the full 
     grayscale CT scan.
-    - ct_mask: a binary array of shape identical to 'ct_grayscale' that 
+    - electrode_mask: a binary array of shape identical to 'ct_grayscale' that 
     contains a mask of the electrode contacts in the CT scan.
     - struct: a binary array of dtype 'bool' and of shape (I, J, K) that 
     contains the structuring element used by the ultimate erosion algorithm.
@@ -155,14 +155,14 @@ def extract_centroids(
     x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
     struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
 
-    dcc_offset, ct_mask, ct_grayscale = __get_box(ct_mask, ct_grayscale)
-    dilated_mask = binary_dilation(ct_mask, struct_dil)
+    dcc_offset, electrode_mask, ct_grayscale = __get_box(electrode_mask, ct_grayscale)
+    dilated_mask = binary_dilation(electrode_mask, struct_dil)
     dcc_labels, n_dcc = label(dilated_mask)
 
     # TODO debug remove
     if DEBUG_PLOT:
         plotter = ElectrodePlotter(lambda x: x)
-        plotter.plot_ct_electrodes(ct_mask)
+        plotter.plot_ct_electrodes(electrode_mask)
         plotter.plot_ct_electrodes(dilated_mask)
 
     centroids = []
@@ -170,8 +170,10 @@ def extract_centroids(
 
     for dcc_id in range(1, n_dcc+1):
         # Computing the CC's within that DCC
-        dcc_mask = dcc_labels == dcc_id
-        cc_labels, n_cc = label(ct_mask & dcc_mask)
+        elec_dcc_mask = electrode_mask & (dcc_labels == dcc_id)
+
+        # Connected components inside the DCC
+        cc_labels, n_cc = label(elec_dcc_mask)
 
         for cc_id in range(1, n_cc+1):    # For each CC
             # Keeping only the smallest array that fully contains the CC (= box)

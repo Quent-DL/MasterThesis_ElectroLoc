@@ -32,7 +32,7 @@ def extract_centroids_from_nib(
     else:
         centroids, tags_dcc = centroids_extraction.extract_centroids(
                 ct_grayscale=nib_wrapper.ct, 
-                ct_mask=nib_wrapper.mask, 
+                electrode_mask=nib_wrapper.mask, 
                 struct=centroids_extraction.get_structuring_element(struct_name)
         )
 
