@@ -20,18 +20,19 @@ def main():
     # INPUT FILES
 
     # Inputs for algorithm
-    data_dir          = ("D:\\QTFE_local\\Python\\ElecLoc\\"
-                         f"data\\{subId}")
-    ct_path           = os.path.join(data_dir, "in\\CT.nii.gz")
-    ct_brainmask_path = os.path.join(data_dir, "in\\CTMask.nii.gz")
-    precomputed_centroids_path = os.path.join(data_dir, "derivatives\\raw_contacts.csv")
-    electrodes_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
+    data_dir          = (f"D:/QTFE_local/Python/ElecLoc/data/{subId}")
+    ct_path           = os.path.join(data_dir, "in/CT.nii.gz")
+    ct_brainmask_path = os.path.join(data_dir, "in/CTMask.nii.gz")
+    precomputed_centroids_path = os.path.join(data_dir, "derivatives/raw_contacts.csv")
+    electrodes_info_path    = os.path.join(data_dir, "in/electrodes_info.csv")
+
     # Outputs
-    output_positions_path = os.path.join(data_dir, "out\\electrodes.csv")
-    output_nifti_path = os.path.join(data_dir, "out\\electrodes_mask.nii.gz")
+    output_positions_path = os.path.join(data_dir, "out/electrodes.csv")
+    output_nifti_path = os.path.join(data_dir, "out/electrodes_mask.nii.gz")
+
     # Validation
-    ground_truth_path = os.path.join("D:\\QTFE_local\\Python\\ElecLoc\\"
-                                     f"data_ground_truths\\{subId}\\ground_truth.csv")
+    ground_truth_path = os.path.join("D:/QTFE_local/Python/ElecLoc/"
+                                     f"data_ground_truths/{subId}/ground_truth.csv")
 
     ##############################
     # THE ALGORITHM ITSELF

@@ -117,7 +117,7 @@ class ElectrodePlotter:
         mesh_ct.cell_data['intensity'] = ct_mask[:-1, :-1, :-1].flatten(order='F')
         vol = mesh_ct.threshold(value=1, scalars='intensity')
         self.plotter.add_mesh(vol, scalars='intensity', **kwargs)
-        self.plotter.remove_scalar_bar()
+        self.plotter.remove_scalar_bar('intensity')
 
     def plot_colored_contacts(self, contacts: np.ndarray, 
                               labels: np.ndarray,

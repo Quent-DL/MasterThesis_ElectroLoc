@@ -150,7 +150,7 @@ class NibCTWrapper:
 
         # Saving mask into Nifti file
         img = nib.nifti1.Nifti1Image(contacts_mask.astype(int), 
-                                     self.affine)
+                                     self.affine, dtype=np.uint8)
         nib.save(img, path)
 
 

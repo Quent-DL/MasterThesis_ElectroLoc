@@ -1,3 +1,6 @@
+# Ignore virtual env files
+.venv
+
 # Data files should not be part of the git
 data
 data_ground_truths
