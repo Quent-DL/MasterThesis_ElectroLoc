@@ -9,11 +9,11 @@ from electrode_models import ParabolicElectrodeModel, ElectrodeModel
 # External modules
 import os
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Literal
 
 def preprocess(
         nib_wrapper: utils.NibCTWrapper,
-        electrode_threshold: float=2500.0
+        electrode_threshold: float=2600.0
 ) -> None:
     nib_wrapper.mask &= (nib_wrapper.ct > electrode_threshold)
 
@@ -22,7 +22,7 @@ def extract_centroids_from_nib(
         nib_wrapper: utils.NibCTWrapper,
         precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Optional parameters
-        struct_name: str = "slice_cross",
+        struct_name: Literal['cube', 'slice_cross', 'cross'] = "slice_cross",
         force_computation: bool = False
 ) -> Tuple[np.ndarray]:
     if (not force_computation
@@ -33,7 +33,7 @@ def extract_centroids_from_nib(
         centroids, tags_dcc = centroids_extraction.extract_centroids(
                 ct_grayscale=nib_wrapper.ct, 
                 electrode_mask=nib_wrapper.mask, 
-                struct=centroids_extraction.get_structuring_element(struct_name)
+                struct_name = struct_name
         )
 
         # Caching the results
@@ -48,7 +48,7 @@ def pipeline(
         # Optional optimization
         precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Hyperparameters
-        electrode_threshold: float = 2500,
+        electrode_threshold: float = 2600.0,     # TODO hyperparameter
         recompute_centroids: bool = False,
         skip_postprocessing: bool = False,
         print_logs: bool = True
@@ -61,7 +61,8 @@ def pipeline(
     if print_logs: log("Extracting contacts coordinates")
     centroids_vox, tags_dcc = extract_centroids_from_nib(
         nib_wrapper, precomp_wrapper, 
-        force_computation=recompute_centroids)
+        force_computation=recompute_centroids,
+        struct_name="slice_cross")
 
     ### Converting contacts to physical coordinates
     centroids_world = nib_wrapper.convert_vox_to_world(centroids_vox)

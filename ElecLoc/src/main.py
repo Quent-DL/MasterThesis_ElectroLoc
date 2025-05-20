@@ -101,7 +101,7 @@ def main():
         plotter = plot.ElectrodePlotter(nib_wrapper.convert_world_to_vox)
         plotter.update_focal_point(contacts_vox.mean(axis=0))
         
-        #plotter.plot_ct(nib_wrapper.ct)
+        plotter.plot_ct(nib_wrapper.ct, alpha_factor=2)
         plotter.plot_ct_electrodes(nib_wrapper.mask)
         plotter.plot_electrodes_models(models)
         plotter.plot_colored_contacts(contacts_vox, output.get_labels()) 
@@ -114,7 +114,7 @@ def main():
                 color=(255,255,255), size_multiplier=2.5)
             plotter.plot_differences(contacts_vox[matched_dt_idx], 
                                     ground_truth_vox[matched_gt_idx])
-
+            
         plotter.show()
 
 

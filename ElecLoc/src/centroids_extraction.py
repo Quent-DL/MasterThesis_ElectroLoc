@@ -3,8 +3,7 @@ from scipy.ndimage import (binary_erosion, binary_dilation, binary_propagation,
                            generate_binary_structure,
                            label, center_of_mass)
 from utils import log
-from typing import Tuple
-
+from typing import Tuple, Literal
 
 # TODO debug remove
 from plot import ElectrodePlotter
@@ -12,10 +11,10 @@ DEBUG_PLOT = False
 
 
 # TODO hyperparameter
-DCC_DILATION_R = 4
+DCC_DILATION_R = 2
 
 
-def get_structuring_element(type='cross'):
+def get_structuring_element(type: Literal['cube', 'slice_cross', 'cross'] = 'cross'):
     if type == 'cube':
         return np.ones((3,3,3))
     elif type == 'slice_cross':
@@ -113,7 +112,7 @@ def __get_box(mask: np.ndarray, *arrays: np.ndarray) -> Tuple[np.ndarray, ...]:
 def extract_centroids(
         ct_grayscale: np.ndarray,
         electrode_mask: np.ndarray,
-        struct: np.ndarray
+        struct_name: Literal['cube', 'slice_cross', 'cross']
 ) -> Tuple[np.ndarray]:
     """Extracts the coordinates of the electrodes contacts (centroids) from the 
     CT image.First, atomic connected components are extracted from the mask 
@@ -150,7 +149,8 @@ def extract_centroids(
     # fully contains each CC (many very small operations)
     # it can be applied on the small CC's instead of the full array.
     # Overall, using CC's to perform binary erosion is more optimized.
-
+    
+    # Computing DCCs
     R = DCC_DILATION_R        # For short notations
     x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
     struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
@@ -165,6 +165,8 @@ def extract_centroids(
         plotter.plot_ct_electrodes(electrode_mask)
         plotter.plot_ct_electrodes(dilated_mask)
 
+    # Computing CCs and centroids
+    struct = get_structuring_element(struct_name)
     centroids = []
     tags_dcc = []
 
@@ -174,7 +176,6 @@ def extract_centroids(
 
         # Connected components inside the DCC
         cc_labels, n_cc = label(elec_dcc_mask)
-
         for cc_id in range(1, n_cc+1):    # For each CC
             # Keeping only the smallest array that fully contains the CC (= box)
             cc_mask = (cc_labels == cc_id)

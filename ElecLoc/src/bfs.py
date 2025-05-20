@@ -1,5 +1,13 @@
-"""A class for performing Breadth-First-Search used by the classification
-module to quickly find the best set of models to fit the data."""
+"""A class for performing Breadth-First-Search used by the modelling
+module to quickly find the best set of models to fit the data.
+
+Adapted from the code provided by Yves Deville 
+for the projects of the course "LINFO1361 - Intelligence Artificielle".
+
+Université Catholique de Louvain
+
+2022-2023.
+"""
 
 from typing import TypeAlias, Tuple, Callable, Iterable
 

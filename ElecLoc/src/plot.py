@@ -18,7 +18,7 @@ from copy import copy
 # is rendered at the center of the voxels
 VOX_CENTERING = np.array([0.5, 0.5, 0.5])
 
-__COLOR_PALETTE = [
+_COLOR_PALETTE = [
     
     (128, 128, 0),     # ???
     (0, 0, 255),       # blue
@@ -45,7 +45,7 @@ __COLOR_PALETTE = [
 
 def get_color(i: int) -> tuple:
     # Choosing color, or new random color if there are many electrodes
-    color = __COLOR_PALETTE[i % len(__COLOR_PALETTE)]     
+    color = _COLOR_PALETTE[i % len(_COLOR_PALETTE)]     
     return color 
 
 
@@ -92,7 +92,7 @@ class ElectrodePlotter:
             color=color,
             render_points_as_spheres=True)
 
-    def plot_ct(self, ct: np.ndarray) -> None:
+    def plot_ct(self, ct: np.ndarray, alpha_factor: int = 1) -> None:
         """TODO write documentation"""
         # TODO Remove: shortcut for synthetic data
         if ct.max() <= 0:
@@ -100,18 +100,24 @@ class ElectrodePlotter:
         vol = pv.ImageData()
         vol.dimensions = np.array(ct.shape) + 1
         vol.cell_data['values'] = ct.flatten(order='F')
-        self.plotter.add_volume(vol, cmap="gray", opacity=[0,0.045/5])
+        self.plotter.add_volume(vol, cmap="gray", opacity=[0,0.045*alpha_factor/5])
 
-    def plot_ct_electrodes(self, ct_mask: np.ndarray) -> None:
-        """TODO write documentation"""
+    def plot_ct_electrodes(self, ct_mask: np.ndarray, **kwargs) -> None:
+        """TODO write documentation.
+        
+        Kwargs: cmap, opacity, and others from pyvista's Plotter.add_mesh"""
         # TODO Remove: synthetic data
         if ct_mask.max() <= 0:
             return
+        
+        kwargs['cmap'] = kwargs.get('cmap', 'Blues')
+        kwargs['opacity'] = kwargs.get('opacity', 0.075)
+
         mesh_ct = pv.wrap(ct_mask)
         mesh_ct.cell_data['intensity'] = ct_mask[:-1, :-1, :-1].flatten(order='F')
         vol = mesh_ct.threshold(value=1, scalars='intensity')
-        self.plotter.add_mesh(vol, cmap='Blues', scalars='intensity', 
-                              opacity=0.075)
+        self.plotter.add_mesh(vol, scalars='intensity', **kwargs)
+        self.plotter.remove_scalar_bar()
 
     def plot_colored_contacts(self, contacts: np.ndarray, 
                               labels: np.ndarray,

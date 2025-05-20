@@ -120,7 +120,6 @@ def _compute_cosines(vecs: np.ndarray[float]) -> np.ndarray:
     cosines = crossdot_u / nrm[:,np.newaxis] / nrm[np.newaxis,:]
     return cosines
 
-
 def _get_leaves(edges: np.ndarray[bool]) -> np.ndarray[int]:
     return np.where(_degrees(edges) == 1)[0]
 
@@ -294,7 +293,7 @@ def _score_sRsquared_group(
     return compute_sRsquared(models, centroids, labels)
 
 
-class InlierCounter():
+class CachingChildEvaluator():
     """This class counts the approximate number of inliers of a group of models
     using a cache mechanism. One instance of this class must be created for
     each new set of points, i.e. for each connected component"""
@@ -308,6 +307,10 @@ class InlierCounter():
         self._icd = intercontact_dist
 
     def _get_distances(self, group: _Group) -> np.ndarray[float]:
+        """Computes distance matrix between all points and the models described
+        by 'group'.
+        
+        Output: Shape (N, K). N = nb of points. K = nb of models."""
         # For cached pairs
         dist_cached = []
         # For non-cached pairs
@@ -358,6 +361,8 @@ class InlierCounter():
         # Computing the final weights (accounting for all models, cached and
         # non-cached)
         distances = self._get_distances(group)
+
+        # For each centroid, the distance to its closest model
         distances = distances.min(axis=1)    # Shape (N,)
         weights = np.exp(- (distances / self._icd)**2 / 2)
         return weights.sum()
@@ -393,15 +398,16 @@ def classify_centroids(
     indices_of_interest = _points_of_interest(centroids, tags_dcc)
     # indices_tags_dcc = tags_dcc[indices_of_interest]    # TODO debug remove
 
+    # TODO wrong: use PURE centroids (3D cross), not full centroids (2D cross), biased otherwise
     icd = estimate_intercontact_distance(centroids)
-    inlier_counter = InlierCounter(centroids, icd)
+    inlier_counter = CachingChildEvaluator(centroids, icd)
 
     if DEBUG_PRINT:
         t_start = time.perf_counter()
     
     bfs_problem = MultimodelFittingProblem(
         candidates = indices_of_interest,
-        scoring_function = lambda group: _score_sRsquared_group(centroids, group),
+        scoring_function = inlier_counter.count_from_group, #lambda group: _score_sRsquared_group(centroids, group),
         children_value_function = inlier_counter.count_from_group,
         goal_depth = n_electrodes,
         tags_dcc=tags_dcc,
