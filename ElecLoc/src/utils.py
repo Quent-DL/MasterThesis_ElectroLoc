@@ -8,6 +8,7 @@ import pandas as pd
 import os
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import confusion_matrix
+from scipy.stats import gaussian_kde
 
 
 class NibCTWrapper:
@@ -436,21 +437,12 @@ def estimate_intercontact_distance(
     # Shape (2N,)
     distances_neigh = np.concatenate([dist_1, dist_2])
 
-    # Identifying the mode of the histogram
-    step = 0.2    # TODO hyperparameter
-    bins = np.arange(0, distances_neigh.max()+step, step)
-    hist, _ = np.histogram(distances_neigh, bins)
-    mode = hist.argmax()    # index of the modal bin
-
-    # Applying mean to modal bin and neighboring bins (IF not on border)
-    bin_min = max(0, mode-1)
-    bin_max = min(len(bins)-1, mode+2)
-    dist = distances_neigh[
-        (bins[bin_min] < distances_neigh) 
-        & (distances_neigh < bins[bin_max])].mean()
-
-    return dist
-
+    # Kernel Density Estimation
+    bandwith = 0.15    # [mm]
+    x_dist = np.linspace(distances_neigh.min(), distances_neigh.max(), 10000)
+    kde = gaussian_kde(distances_neigh, bw_method=0.1)
+    y_density = kde(x_vals)
+    return x_dist[y_density.argmax()]
 
 def stable_marriage(preferences: np.ndarray, maximize=True) -> np.ndarray[int]:
     """Solves the stable marriage problem for a square matrix.
