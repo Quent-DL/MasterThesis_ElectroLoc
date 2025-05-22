@@ -441,7 +441,7 @@ def estimate_intercontact_distance(
     bandwith = 0.15    # [mm]
     x_dist = np.linspace(distances_neigh.min(), distances_neigh.max(), 10000)
     kde = gaussian_kde(distances_neigh, bw_method=0.1)
-    y_density = kde(x_vals)
+    y_density = kde(x_dist)
     return x_dist[y_density.argmax()]
 
 def stable_marriage(preferences: np.ndarray, maximize=True) -> np.ndarray[int]:
