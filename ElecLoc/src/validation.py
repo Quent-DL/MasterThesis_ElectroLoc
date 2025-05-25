@@ -23,14 +23,14 @@ SUB_IDS = [
 def get_data() -> list[tuple[NibCTWrapper, ElectrodesInfo, PipelineOutput]]:
     data = []
     for subId in SUB_IDS:
-        data_dir          = (f"{os.path.dirname(__file__)}\\..\\data\\{subId}\\")
-        elec_info_path    = os.path.join(data_dir, "in\\electrodes_info.csv")
-        ground_truth_path = (f"{os.path.dirname(__file__)}\\..\\data_ground_truths\\"
-                             f"{subId}\\ground_truth.csv")
+        data_dir          = (f"{os.path.dirname(__file__)}/../data/{subId}/")
+        elec_info_path    = os.path.join(data_dir, "in/electrodes_info.csv")
+        ground_truth_path = (f"{os.path.dirname(__file__)}/../data_ground_truths/"
+                             f"{subId}/ground_truth.csv")
 
         nib_wrapper = NibCTWrapper(
-            os.path.join(data_dir, "in\\CT.nii.gz"), 
-            os.path.join(data_dir, "in\\CTMask.nii.gz"))
+            os.path.join(data_dir, "in/CT.nii.gz"), 
+            os.path.join(data_dir, "in/CTMask.nii.gz"))
         elec_info = ElectrodesInfo(elec_info_path)
         ground_truth = PipelineOutput.from_csv(ground_truth_path)
 
