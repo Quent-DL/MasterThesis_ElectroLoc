@@ -11,7 +11,7 @@ DEBUG_PLOT = False
 
 
 # TODO hyperparameter
-DCC_DILATION_R = 2
+DCC_DILATION_R = 3
 
 
 def get_structuring_element(type: Literal['cube', 'slice_cross', 'cross'] = 'cross'):
