@@ -48,7 +48,7 @@ def pipeline(
         # Optional optimization
         precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Hyperparameters
-        electrode_threshold: float = 2600.0,     # TODO hyperparameter
+        electrode_threshold: float = 2500.0,     # TODO hyperparameter
         recompute_centroids: bool = False,
         skip_postprocessing: bool = False,
         print_logs: bool = True
@@ -73,6 +73,14 @@ def pipeline(
     if print_logs: log("Classifying contacts to electrodes")
     labels, models = classification_cc.classify_centroids(
         centroids_world, tags_dcc, electrodes_info.nb_electrodes)
+    
+
+    # TODO debug remove
+    from plot import ElectrodePlotter
+    plotter = ElectrodePlotter(nib_wrapper.convert_world_to_vox)
+    plotter.plot_colored_contacts(centroids_world, labels, convert_to_vox=True)
+    plotter.plot_electrodes_models(models)
+    plotter.show()
     
     ### Postprocessing
     # TODO add hyperparameters to function call

@@ -20,7 +20,7 @@ def main():
     # INPUT FILES
 
     # Inputs for algorithm
-    data_dir          = (f"D:/QTFE_local/Python/ElecLoc/data/{subId}")
+    data_dir          = (f"/etinfo/users/2023/qdelaet/MasterThesisSrc/ElecLoc/data/{subId}")
     ct_path           = os.path.join(data_dir, "in/CT.nii.gz")
     ct_brainmask_path = os.path.join(data_dir, "in/CTMask.nii.gz")
     precomputed_centroids_path = os.path.join(data_dir, "derivatives/raw_contacts.csv")
@@ -31,7 +31,7 @@ def main():
     output_nifti_path = os.path.join(data_dir, "out/electrodes_mask.nii.gz")
 
     # Validation
-    ground_truth_path = os.path.join("D:/QTFE_local/Python/ElecLoc/"
+    ground_truth_path = os.path.join("/etinfo/users/2023/qdelaet/MasterThesisSrc/ElecLoc/"
                                      f"data_ground_truths/{subId}/ground_truth.csv")
 
     ##############################
