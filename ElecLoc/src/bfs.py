@@ -47,7 +47,7 @@ class MultimodelFittingProblem:
                  children_value_function: Callable[[Tuple[Tuple[int, int]]], float],    # TODO test keep or delete
                  goal_depth: int,
                  tags_dcc: np.ndarray[int],
-                 max_n_children: int = 3,):
+                 max_n_children: int = 2):
         """TODO Write documentation.
         The constructor specifies the initial state, and possibly a goal
         state, if there is a unique goal. Your subclass's constructor can add
@@ -83,14 +83,8 @@ class MultimodelFittingProblem:
         """Generic: Return the states that can be reached from the given
         state."""
 
-        # TODO init parameter max nb of children as a list [3,3,3,2,2,1,1,1]
-        # choosing nb of children based on depth, to avoid trees too big
-        """depth = len(state.pairs)
-        if depth < 2: n_children = 3
-        elif depth < 6: n_children = 2
-        else: n_children = 1
-        # but n_children cannot exceed the hyperparam received
-        n_children = min(n_children, self._max_n_children)"""
+        # TODO init parameter max nb of children as a list [3,3,3,2,2,1,1,1] based on depth. 
+        # 3 children at depths [0, 1, 2], 2 children at depths [3, 4], 1 child for depths >= 5
         n_children = self._max_n_children
 
         # Computing the available candidates for forming a new pair

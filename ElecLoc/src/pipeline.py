@@ -23,7 +23,8 @@ def extract_centroids_from_nib(
         precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Optional parameters
         struct_name: Literal['cube', 'slice_cross', 'cross'] = "slice_cross",
-        force_computation: bool = False
+        force_computation: bool = False,
+        dcc_dilation_radius: int = 3
 ) -> Tuple[np.ndarray]:
     if (not force_computation
             and precomp_wrapper is not None
@@ -33,7 +34,8 @@ def extract_centroids_from_nib(
         centroids, tags_dcc = centroids_extraction.extract_centroids(
                 ct_grayscale=nib_wrapper.ct, 
                 electrode_mask=nib_wrapper.mask, 
-                struct_name = struct_name
+                struct_name = struct_name,
+                dcc_dilation_radius=dcc_dilation_radius
         )
 
         # Caching the results
@@ -48,7 +50,10 @@ def pipeline(
         # Optional optimization
         precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Hyperparameters
-        electrode_threshold: float = 2600.0,     # TODO hyperparameter
+        electrode_threshold: float = 2500.0,     # TODO hyperparameter
+        branching_factor_modeling: int = 2,
+        dilation_radius_dcc_extraction: int = 3,
+        # Debug parameters
         recompute_centroids: bool = False,
         skip_postprocessing: bool = False,
         print_logs: bool = True
@@ -62,7 +67,8 @@ def pipeline(
     centroids_vox, tags_dcc = extract_centroids_from_nib(
         nib_wrapper, precomp_wrapper, 
         force_computation=recompute_centroids,
-        struct_name="slice_cross")
+        struct_name="slice_cross",
+        dcc_dilation_radius=dilation_radius_dcc_extraction)
 
     ### Converting contacts to physical coordinates
     centroids_world = nib_wrapper.convert_vox_to_world(centroids_vox)
@@ -72,7 +78,10 @@ def pipeline(
     ### Segmenting contacts into electrodes
     if print_logs: log("Classifying contacts to electrodes")
     labels, models = classification_cc.classify_centroids(
-        centroids_world, tags_dcc, electrodes_info.nb_electrodes)
+        centroids_world, 
+        tags_dcc, 
+        electrodes_info.nb_electrodes,
+        branching_factor_modeling)
     
     ### Postprocessing
     # TODO add hyperparameters to function call

@@ -10,10 +10,6 @@ from plot import ElectrodePlotter
 DEBUG_PLOT = False
 
 
-# TODO hyperparameter
-DCC_DILATION_R = 3
-
-
 def get_structuring_element(type: Literal['cube', 'slice_cross', 'cross'] = 'cross'):
     if type == 'cube':
         return np.ones((3,3,3))
@@ -112,7 +108,8 @@ def __get_box(mask: np.ndarray, *arrays: np.ndarray) -> Tuple[np.ndarray, ...]:
 def extract_centroids(
         ct_grayscale: np.ndarray,
         electrode_mask: np.ndarray,
-        struct_name: Literal['cube', 'slice_cross', 'cross']
+        struct_name: Literal['cube', 'slice_cross', 'cross'] = 'slice_cross',
+        dcc_dilation_radius: int = 3
 ) -> Tuple[np.ndarray]:
     """Extracts the coordinates of the electrodes contacts (centroids) from the 
     CT image.First, atomic connected components are extracted from the mask 
@@ -151,7 +148,7 @@ def extract_centroids(
     # Overall, using CC's to perform binary erosion is more optimized.
     
     # Computing DCCs
-    R = DCC_DILATION_R        # For short notations
+    R = dcc_dilation_radius        # For short notations
     x, y, z = np.indices((2*R+1, 2*R+1, 2*R+1))
     struct_dil = (x-R)**2 + (y-R)**2 + (z-R)**2 <= R**2 
 

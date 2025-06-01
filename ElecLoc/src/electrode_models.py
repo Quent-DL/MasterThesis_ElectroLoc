@@ -283,7 +283,9 @@ class ParabolicElectrodeModel(ElectrodeModel):
 
         if len(samples) < self.MIN_SAMPLES:
             # Ignore if not enough samples given
-            return
+            raise ValueError(f"Only {len(samples)} are classified to an electrode, "
+                             "which is not enough to fit a parabola. "
+                             "Are the DCCs correctly computed, with a sufficient dilation radius ?")
 
         # Starting by approximating the electrode as a line
         line_model = LinearElectrodeModel(samples)

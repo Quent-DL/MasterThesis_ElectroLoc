@@ -13,8 +13,6 @@ _Group: TypeAlias = tuple[_Pair]
 
 # HYPERPARAMETERS
 MAX_ANGLE = 45
-BFS_MAX_CHILDREN = 2   # max number of children per node. Select best ones.
-
 
 
 ############################
@@ -376,7 +374,8 @@ class CachingChildEvaluator():
 def classify_centroids(
         centroids: np.ndarray,
         tags_dcc: np.ndarray,
-        n_electrodes: int
+        n_electrodes: int,
+        branching_factor_search: int = 3
 ) -> Tuple[np.ndarray[int], List[SegmentElectrodeModel]]:
     """Computes the optimal group of models from the given set of points.
     A group of model is considered optimal if it minimizes the number of
@@ -411,7 +410,7 @@ def classify_centroids(
         children_value_function = inlier_counter.count_from_group,
         goal_depth = n_electrodes,
         tags_dcc=tags_dcc,
-        max_n_children = BFS_MAX_CHILDREN,
+        max_n_children = branching_factor_search,
     )
 
     best_group = breadth_first_graph_search(bfs_problem)
