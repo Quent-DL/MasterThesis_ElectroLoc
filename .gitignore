@@ -7,14 +7,3 @@
 
 # Ignore python cache
 __pycache__
-
-# Ignore work-in-progress files
-*.ipynb
-
-# Unwanted folders
-0_Organizing_the_dataset
-Elikopy
-toy
-
-# Exceptions
-!requirements.txt 

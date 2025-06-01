@@ -3,7 +3,7 @@ results."""
 
 import pipeline
 import postprocessing
-import classification_cc
+import linear_modeling
 from utils import (distance_matrix, NibCTWrapper, ElectrodesInfo, 
                    estimate_intercontact_distance, PipelineOutput,
                    match_and_swap_labels)
@@ -199,7 +199,7 @@ def batch_validate_classification():
             ground_truth.get_vox_coordinates())
 
         # Before preprocessing
-        pred_labels, models = classification_cc.classify_centroids(
+        pred_labels, models = linear_modeling.classify_centroids(
             contacts_world,
             ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int),
             elec_info.nb_electrodes

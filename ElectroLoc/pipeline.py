@@ -2,7 +2,7 @@
 import utils
 from utils import log, PipelineOutput
 import centroids_extraction
-import classification_cc
+import linear_modeling
 import postprocessing
 from electrode_models import ParabolicElectrodeModel, ElectrodeModel
 
@@ -77,7 +77,7 @@ def pipeline(
     
     ### Segmenting contacts into electrodes
     if print_logs: log("Classifying contacts to electrodes")
-    labels, models = classification_cc.classify_centroids(
+    labels, models = linear_modeling.classify_centroids(
         centroids_world, 
         tags_dcc, 
         electrodes_info.nb_electrodes,
