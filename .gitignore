@@ -1,20 +1,15 @@
 # Ignore virtual env files
 .venv
 
-# Data files should not be part of the git
-data
-data_ground_truths
+# Data files should never be part of the git
 *.nii.gz
-*.txt
 *.csv
-*.p
 
 # Ignore python cache
 __pycache__
 
 # Ignore work-in-progress files
 *.ipynb
-prototypes
 
 # Unwanted folders
 0_Organizing_the_dataset
