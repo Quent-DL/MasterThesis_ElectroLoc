@@ -4,13 +4,11 @@ results."""
 import pipeline
 import postprocessing
 import linear_modeling
-from utils import (distance_matrix, NibCTWrapper, ElectrodesInfo, 
-                   estimate_intercontact_distance, PipelineOutput,
-                   match_and_swap_labels)
+from utils import *
+from misc.nib_wrapper import NibCTWrapper
 
 import numpy as np
-import pandas as pd
-from typing import Callable, Optional, Tuple
+from typing import Tuple
 import os
 
 

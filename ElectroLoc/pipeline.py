@@ -1,54 +1,26 @@
 # Local modules
 import utils
 from utils import log, PipelineOutput
+from misc.nib_wrapper import NibCTWrapper
 import centroids_extraction
 import linear_modeling
 import postprocessing
-from electrode_models import ParabolicElectrodeModel, ElectrodeModel
+from misc.electrode_models import ParabolicElectrodeModel, ElectrodeModel
 
 # External modules
-import os
-import numpy as np
-from typing import List, Tuple, Optional, Literal
+from typing import List, Tuple, Optional
+
 
 def preprocess(
-        nib_wrapper: utils.NibCTWrapper,
+        nib_wrapper: NibCTWrapper,
         electrode_threshold: float=2600.0
 ) -> None:
     nib_wrapper.mask &= (nib_wrapper.ct > electrode_threshold)
 
 
-def extract_centroids_from_nib(
-        nib_wrapper: utils.NibCTWrapper,
-        precomp_wrapper: Optional[utils.PrecompWrapper] = None,
-        # Optional parameters
-        struct_name: Literal['cube', 'slice_cross', 'cross'] = "slice_cross",
-        force_computation: bool = False,
-        dcc_dilation_radius: int = 3
-) -> Tuple[np.ndarray]:
-    if (not force_computation
-            and precomp_wrapper is not None
-            and precomp_wrapper.can_be_loaded()):
-        centroids, tags_dcc = precomp_wrapper.load_precomputed_centroids()
-    else:
-        centroids, tags_dcc = centroids_extraction.extract_centroids(
-                ct_grayscale=nib_wrapper.ct, 
-                electrode_mask=nib_wrapper.mask, 
-                struct_name = struct_name,
-                dcc_dilation_radius=dcc_dilation_radius
-        )
-
-        # Caching the results
-        if precomp_wrapper is not None:
-            precomp_wrapper.save_precomputed(centroids, tags_dcc)
-    return centroids, tags_dcc
-
-
 def pipeline(
-        nib_wrapper: utils.NibCTWrapper,
+        nib_wrapper: NibCTWrapper,
         electrodes_info: utils.ElectrodesInfo,
-        # Optional optimization
-        precomp_wrapper: Optional[utils.PrecompWrapper] = None,
         # Hyperparameters
         electrode_threshold: float = 2500.0,     # TODO hyperparameter
         branching_factor_modeling: int = 2,
@@ -64,10 +36,10 @@ def pipeline(
 
     ### Fetching approximate contacts
     if print_logs: log("Extracting contacts coordinates")
-    centroids_vox, tags_dcc = extract_centroids_from_nib(
-        nib_wrapper, precomp_wrapper, 
-        force_computation=recompute_centroids,
-        struct_name="slice_cross",
+    centroids_vox, tags_dcc = centroids_extraction.extract_centroids(
+        ct_grayscale=nib_wrapper.ct, 
+        electrode_mask=nib_wrapper.mask, 
+        struct_name = "slice_cross",
         dcc_dilation_radius=dilation_radius_dcc_extraction)
 
     ### Converting contacts to physical coordinates
@@ -113,15 +85,13 @@ def pipeline_from_paths(
     ct_path: str,
     electrodes_info_path: str,
     ct_brainmask_path: Optional[str] = None,
-    precomputed_centroids_path: Optional[str] = None,
     print_logs: bool = True,
     **kwargs
 ) -> Tuple[PipelineOutput, List[ElectrodeModel]]:
     ### Loading the data
     if print_logs: log("Loading data")
-    nib_wrapper = utils.NibCTWrapper(ct_path, ct_brainmask_path)
+    nib_wrapper = NibCTWrapper(ct_path, ct_brainmask_path)
     electrodes_info = utils.ElectrodesInfo(electrodes_info_path)
-    precomp_wrapper = utils.PrecompWrapper(precomputed_centroids_path)
 
-    return pipeline(nib_wrapper, electrodes_info, precomp_wrapper, 
+    return pipeline(nib_wrapper, electrodes_info, 
                     print_logs=print_logs, **kwargs)

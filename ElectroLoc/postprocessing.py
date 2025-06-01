@@ -1,6 +1,6 @@
 import utils
 from utils import ElectrodesInfo
-from electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
+from misc.electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
                               LinearElectrodeModel, compute_sRsquared)
 
 import numpy as np

@@ -3,6 +3,7 @@ import utils
 from utils import log
 import pipeline
 import validation
+from misc.nib_wrapper import NibCTWrapper
 import plot
 
 # External modules
@@ -179,7 +180,7 @@ def main(args: Namespace):
     # SAVING RESULTS
 
     # Copy of the NibWrapper used in the algorithm, for validation and plotting
-    nib_wrapper = utils.NibCTWrapper(ct_path, ct_brainmask_path)
+    nib_wrapper = NibCTWrapper(ct_path, ct_brainmask_path)
     pipeline.preprocess(nib_wrapper, args.ct_threshold)
 
     # Saving results to CSV file

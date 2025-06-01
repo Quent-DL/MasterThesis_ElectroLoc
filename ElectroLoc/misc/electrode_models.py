@@ -167,7 +167,9 @@ class LinearElectrodeModel(ElectrodeModel):
     computed to be the closest to the mean of the samples used to fit
     the line. Shape (3,).
     - self.direction (np.ndarray): the unit direction vector of the line. 
-    Shape (3,)."""
+    Shape (3,).
+    
+    Deprecated. Use SegmentElectrodeModel instead."""
     MIN_SAMPLES = 2
 
     @override

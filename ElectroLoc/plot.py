@@ -2,7 +2,7 @@
 This file is responsible for plotting the data and models
 """
 
-from electrode_models import (ElectrodeModel, 
+from misc.electrode_models import (ElectrodeModel, 
                               LinearElectrodeModel, 
                               SegmentElectrodeModel,
                               ParabolicElectrodeModel)
