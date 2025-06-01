@@ -1,5 +1,5 @@
 import utils
-from utils import ElectrodesInfo
+from misc.electrode_information import ElectrodesInfo
 from misc.electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
                               LinearElectrodeModel, compute_sRsquared)
 

@@ -6,6 +6,7 @@ import postprocessing
 import linear_modeling
 from utils import *
 from misc.nib_wrapper import NibCTWrapper
+from misc.electrode_information import ElectrodesInfo
 
 import numpy as np
 from typing import Tuple

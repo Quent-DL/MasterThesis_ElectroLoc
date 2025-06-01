@@ -2,6 +2,7 @@
 import utils
 from utils import log, PipelineOutput
 from misc.nib_wrapper import NibCTWrapper
+from misc.electrode_information import ElectrodesInfo
 import centroids_extraction
 import linear_modeling
 import postprocessing
@@ -20,7 +21,7 @@ def preprocess(
 
 def pipeline(
         nib_wrapper: NibCTWrapper,
-        electrodes_info: utils.ElectrodesInfo,
+        electrodes_info: ElectrodesInfo,
         # Hyperparameters
         electrode_threshold: float = 2500.0,     # TODO hyperparameter
         branching_factor_modeling: int = 2,
@@ -91,7 +92,7 @@ def pipeline_from_paths(
     ### Loading the data
     if print_logs: log("Loading data")
     nib_wrapper = NibCTWrapper(ct_path, ct_brainmask_path)
-    electrodes_info = utils.ElectrodesInfo(electrodes_info_path)
+    electrodes_info = ElectrodesInfo(electrodes_info_path)
 
     return pipeline(nib_wrapper, electrodes_info, 
                     print_logs=print_logs, **kwargs)
