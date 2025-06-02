@@ -1,12 +1,12 @@
 # Local modules
-from misc.utils import log
-from misc.nib_wrapper import NibCTWrapper
-from misc.electrode_information import ElectrodesInfo
-from misc.dataframe_contacts import DataFrameContacts
+from ElectroLoc.misc.utils import log
+from ElectroLoc.misc.nib_wrapper import NibCTWrapper
+from ElectroLoc.misc.electrode_information import ElectrodesInfo
+from ElectroLoc.misc.dataframe_contacts import DataFrameContacts
 import centroids_extraction
 import linear_modeling
 import postprocessing
-from misc.electrode_models import ParabolicElectrodeModel, ElectrodeModel
+from ElectroLoc.misc.electrode_models import ParabolicElectrodeModel, ElectrodeModel
 
 # External modules
 from typing import List, Tuple, Optional

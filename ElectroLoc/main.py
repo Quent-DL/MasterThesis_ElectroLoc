@@ -1,7 +1,7 @@
 # Local modules
-from misc.utils import log, estimate_intercontact_distance
-from misc.nib_wrapper import NibCTWrapper
-from misc.dataframe_contacts import DataFrameContacts
+from ElectroLoc.misc.utils import log, estimate_intercontact_distance
+from ElectroLoc.misc.nib_wrapper import NibCTWrapper
+from ElectroLoc.misc.dataframe_contacts import DataFrameContacts
 import pipeline
 import validation
 import plot
