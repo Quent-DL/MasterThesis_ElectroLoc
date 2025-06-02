@@ -11,27 +11,35 @@ ElectroLoc is a Python module that allows localizing and label electrode contact
 
 ## Installation
 
-1. Make sure to have Python and `pip` available on your computer:
+1. Make sure to have [Python](https://www.python.org/downloads/) and [pip](https://pip.pypa.io/en/stable/installation/) available on your computer:
 ```sh
 # Both of these commands should return the versions of your Python and pip
 python --version
 python -m pip -- version
 ```
-If one these commands an error, then first install Python and pip on your computer, then continue this installation guide.
+If one these commands an error, then first install [Python](https://www.python.org/downloads/) on your computer. Normally, `pip` should be installed automatically during the installation of Python, and the commands above should work. Otherwise, this can be remedied by directly installing pip [here](https://pip.pypa.io/en/stable/installation/). Once Python and pip have both been successfully installed, the rest of this installation guide can be followed.
+
 2. Download the source code as a `.zip` file and extract it to the desired directory, or clone this repository:
 ```sh
 git clone https://github.com/Quent-DL/ElectroLoc.git
 ```
+
 3. Navigate to the root directory of this repository:
 ```sh
 cd /path/to/root/directory
+
+# On Linux and Mac:
 ls         # Should display ElectroLoc, .gitignore, LICENCE, README.md, and requirements.txt
+
+# On Windows:
+dir        # Should display ElectroLoc, .gitignore, LICENCE, README.md, and requirements.txt
 ```
 4. Install the required libraries:
 ```sh
 python -m pip install -r requirements.txt
 ```
 Wait until all packages are downloaded. This may take a while.
+
 5. The package is now ready to use ! You can try it by executing the following command from the root of the repository:
 ```sh
 python -m ElectroLoc /path/to/CT/image.nii.gz  /path/to/brain/mask.nii.gz  /path/to/electrode/information.csv
