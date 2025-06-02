@@ -99,20 +99,21 @@ The parameter `-m` allows saving the result of the predicted contacts as a binar
 
 The code is located in the package `ElectroLoc`, which is composed of the following files:
 ```sh
-# Backbone of the project
-pipeline_wrapper.py        # Handles actions surrounding the algorithm such as retrieving the parameters, running the pipeline, saving, plotting, ...
-pipeline.py                # The actual core of the algorithm, that launches the preprocessing, centroid extraction, linear modeling, and post-processing modules
-
-# The algorithm's modules
-centroids_extraction.py    # Extracts pointwise centroids from the CT's image along the electrodes
-linear_modeling.py         # Fits linear models to the centroids
-postprocessing.py          # Replaces linear models by curved ones, and generates equidistant contacts
-
-# Validation of the results
-validation.py              # Launches batch validation to assess the performances of the model (*)
-
-# Miscellaneous files
-misc/                      # Contains various utilitary classes and functions used throughout the algorithm
+ElectroLoc/
+|
+|   # Backbone of the executable algorithm 
+├── pipeline_wrapper.py       # Handles actions surrounding the algorithm such as retrieving the parameters, running the pipeline, saving, plotting, ...
+├── pipeline.py               # The actual core of the algorithm, that launches the preprocessing, centroid extraction, linear modeling, and post-processing modules
+|
+|   # Modules used by the algorithm
+├── centroids_extraction.py   # Extracts pointwise centroids from the CT's image along the electrodes
+├── linear_modeling.py        # Fits linear models to the centroids
+├── postprocessing.py         # Replaces linear models by curved ones, and generates equidistant contacts
+|
+|   # Complementary files
+├── validation.py             # Launches batch validation to assess the performances of the model (*)
+└── misc/                     # Contains various utilitary classes and functions used throughout the algorithm
+    └── ...                   
 ```
 
 *(\*) The input systme of the algorithm was updated recently (from hard-coded input file paths to terminal-based arguments). The file `validation.py` was not updated to this new system yet, and is currently unavailable for use.*
