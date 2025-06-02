@@ -1,13 +1,13 @@
 """This file's purpose is to provide metrics to validate the algorithm's 
 results."""
 
-import pipeline
-import postprocessing
-import linear_modeling
-from ElectroLoc.misc.utils import match_and_swap_labels, distance_matrix, estimate_intercontact_distance
-from ElectroLoc.misc.dataframe_contacts import DataFrameContacts
-from ElectroLoc.misc.nib_wrapper import NibCTWrapper
-from ElectroLoc.misc.electrode_information import ElectrodesInfo
+from .pipeline import pipeline
+from .postprocessing import postprocess
+from .linear_modeling import classify_centroids
+from .misc.utils import match_and_swap_labels, distance_matrix, estimate_intercontact_distance
+from .misc.dataframe_contacts import DataFrameContacts
+from .misc.nib_wrapper import NibCTWrapper
+from .misc.electrode_information import ElectrodesInfo
 
 import numpy as np
 from typing import Tuple
@@ -199,14 +199,14 @@ def batch_validate_classification():
             ground_truth.get_vox_coordinates())
 
         # Before preprocessing
-        pred_labels, models = linear_modeling.classify_centroids(
+        pred_labels, models = classify_centroids(
             contacts_world,
             ground_truth[ground_truth._TAG_DCC_KEY].to_numpy(dtype=int),
             elec_info.nb_electrodes
         )
 
         # After preprocessing
-        _, pred_labels_post, _, models_post = postprocessing.postprocess(
+        _, pred_labels_post, _, models_post = postprocess(
             contacts_world, 
             pred_labels, 
             models,
@@ -219,12 +219,11 @@ def batch_validate_classification():
         )
 
         # TODO DEBUG remove ###########
-        from plot import ElectrodePlotter
+        from .misc.plot import ElectrodePlotter
         plotter = ElectrodePlotter(lambda x, apply_translation=False: x)
         plotter.plot_colored_contacts(contacts_world, pred_labels_post)
         plotter.plot_electrodes_models(models_post)
         plotter.show()
-
         ##############################
 
         # Retrieving the expected labels, and the matching predicted labels

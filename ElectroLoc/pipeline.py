@@ -1,12 +1,12 @@
 # Local modules
-from ElectroLoc.misc.utils import log
-from ElectroLoc.misc.nib_wrapper import NibCTWrapper
-from ElectroLoc.misc.electrode_information import ElectrodesInfo
-from ElectroLoc.misc.dataframe_contacts import DataFrameContacts
-import centroids_extraction
-import linear_modeling
-import postprocessing
-from ElectroLoc.misc.electrode_models import ParabolicElectrodeModel, ElectrodeModel
+from .misc.utils import log
+from .misc.nib_wrapper import NibCTWrapper
+from .misc.electrode_information import ElectrodesInfo
+from .misc.dataframe_contacts import DataFrameContacts
+from .misc.electrode_models import ParabolicElectrodeModel, ElectrodeModel
+from .centroids_extraction import extract_centroids
+from .linear_modeling import classify_centroids
+from .postprocessing import postprocess, _get_electrodes_contacts_ids
 
 # External modules
 from typing import List, Tuple, Optional
@@ -37,7 +37,7 @@ def pipeline(
 
     ### Fetching approximate contacts
     if print_logs: log("Extracting contacts coordinates")
-    centroids_vox, tags_dcc = centroids_extraction.extract_centroids(
+    centroids_vox, tags_dcc = extract_centroids(
         ct_grayscale=nib_wrapper.ct, 
         electrode_mask=nib_wrapper.mask, 
         struct_name = "slice_cross",
@@ -50,7 +50,7 @@ def pipeline(
     
     ### Segmenting contacts into electrodes
     if print_logs: log("Classifying contacts to electrodes")
-    labels, models = linear_modeling.classify_centroids(
+    labels, models = classify_centroids(
         centroids_world, 
         tags_dcc, 
         electrodes_info.nb_electrodes,
@@ -60,7 +60,7 @@ def pipeline(
     # TODO add hyperparameters to function call
     if not skip_postprocessing:
         if print_logs: log("Post-processing results")
-        contacts_world, labels, contacts_ids, models = postprocessing.postprocess(
+        contacts_world, labels, contacts_ids, models = postprocess(
             centroids_world, 
             labels, 
             models, 
@@ -69,7 +69,7 @@ def pipeline(
             ct_center=nib_wrapper.get_center_world())
     else:
         contacts_world = centroids_world
-        contacts_ids = postprocessing._get_electrodes_contacts_ids(
+        contacts_ids = _get_electrodes_contacts_ids(
             contacts_world, labels, nib_wrapper.get_center_world())
         
     ### Assembling the output

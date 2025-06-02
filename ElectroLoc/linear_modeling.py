@@ -1,8 +1,8 @@
 """TODO write info"""
 
-from ElectroLoc.misc.utils import distance_matrix, estimate_intercontact_distance
-from ElectroLoc.misc.electrode_models import SegmentElectrodeModel, compute_sRsquared
-from ElectroLoc.misc.bfs import MultimodelFittingProblem, breadth_first_graph_search
+from .misc.utils import distance_matrix, estimate_intercontact_distance
+from .misc.electrode_models import SegmentElectrodeModel, compute_sRsquared
+from .misc.bfs import MultimodelFittingProblem, breadth_first_graph_search
 
 import numpy as np
 from typing import List, Tuple, TypeAlias

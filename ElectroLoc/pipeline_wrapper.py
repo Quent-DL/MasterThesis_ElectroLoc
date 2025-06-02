@@ -1,10 +1,10 @@
 # Local modules
-from ElectroLoc.misc.utils import log, estimate_intercontact_distance
-from ElectroLoc.misc.nib_wrapper import NibCTWrapper
-from ElectroLoc.misc.dataframe_contacts import DataFrameContacts
-import pipeline
-import validation
-import plot
+from .misc.utils import log, estimate_intercontact_distance
+from .misc.nib_wrapper import NibCTWrapper
+from .misc.dataframe_contacts import DataFrameContacts
+from .pipeline import pipeline_from_paths, preprocess
+from .validation import check_contacts_positions, print_position_results
+from .misc.plot import ElectrodePlotter
 
 # External modules
 import os
@@ -142,7 +142,7 @@ def validate_args(args: Namespace) -> None:
 
 
 
-def main(args: Namespace):
+def run_wrapper_algorithm(args: Namespace):
 
     ##############################
     # INPUT FILES
@@ -162,7 +162,7 @@ def main(args: Namespace):
     ##############################ct_path
     # THE ALGORITHM ITSELF
 
-    output, models = pipeline.pipeline_from_paths(
+    output, models = pipeline_from_paths(
         ct_path,
         electrodes_info_path,
         ct_brainmask_path,
@@ -181,7 +181,7 @@ def main(args: Namespace):
 
     # Copy of the NibWrapper used in the algorithm, for validation and plotting
     nib_wrapper = NibCTWrapper(ct_path, ct_brainmask_path)
-    pipeline.preprocess(nib_wrapper, args.ct_threshold)
+    preprocess(nib_wrapper, args.ct_threshold)
 
     # Saving results to CSV file
     if args.verbose: log("Saving results")
@@ -217,11 +217,11 @@ def main(args: Namespace):
             ground_truth_vox)
     
         (matched_dt_idx, matched_gt_idx, excess_dt_idx, holes_gt_idx, 
-                rlvt_distances) = validation.check_contacts_positions(
+                rlvt_distances) = check_contacts_positions(
                     contacts_world,
                     ground_truth_world,
                     0.75 * intercontact_dist_world)
-        validation.print_position_results(
+        print_position_results(
             len(contacts_world), len(ground_truth_world), len(matched_dt_idx),
             len(excess_dt_idx), len(holes_gt_idx), rlvt_distances)
 
@@ -230,7 +230,7 @@ def main(args: Namespace):
         if args.verbose: log("Plotting results")
         contacts_vox = output.get_vox_coordinates()
 
-        plotter = plot.ElectrodePlotter(nib_wrapper.convert_world_to_vox)
+        plotter = ElectrodePlotter(nib_wrapper.convert_world_to_vox)
         plotter.update_focal_point(contacts_vox.mean(axis=0))
 
         if "i" in args.plot_options:
@@ -254,8 +254,8 @@ def main(args: Namespace):
         plotter.show()
 
 
-if __name__ == '__main__':
+def main():
     parser = generate_arg_parser()
     args = parser.parse_args()
     validate_args(args)
-    main(args)
+    run_wrapper_algorithm(args)

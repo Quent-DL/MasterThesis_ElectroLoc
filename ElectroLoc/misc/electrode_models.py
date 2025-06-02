@@ -4,7 +4,7 @@ ElectrodeModel is the interface with functions that all inheriting classes
 should implement.
 """
 
-from ElectroLoc.misc.utils import get_regression_line_parameters, distance_matrix
+from .utils import get_regression_line_parameters, distance_matrix
 
 import numpy as np
 from numpy import cross, sqrt, log

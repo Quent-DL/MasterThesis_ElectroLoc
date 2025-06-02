@@ -1,6 +1,6 @@
-from ElectroLoc.misc.utils import stable_marriage, estimate_intercontact_distance, distance_matrix
-from ElectroLoc.misc.electrode_information import ElectrodesInfo
-from ElectroLoc.misc.electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
+from .misc.utils import stable_marriage, estimate_intercontact_distance, distance_matrix
+from .misc.electrode_information import ElectrodesInfo
+from .misc.electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
                               LinearElectrodeModel, compute_sRsquared)
 
 import numpy as np

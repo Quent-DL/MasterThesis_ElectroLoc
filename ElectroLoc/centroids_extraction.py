@@ -2,11 +2,11 @@ import numpy as np
 from scipy.ndimage import (binary_erosion, binary_dilation, binary_propagation,
                            generate_binary_structure,
                            label, center_of_mass)
-from ElectroLoc.misc.utils import log
 from typing import Tuple, Literal
 
+
 # TODO debug remove
-from plot import ElectrodePlotter
+from .misc.plot import ElectrodePlotter
 DEBUG_PLOT = False
 
 
