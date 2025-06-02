@@ -1,9 +1,10 @@
 # Local modules
 import utils
 from utils import log
+from misc.nib_wrapper import NibCTWrapper
+from misc.dataframe_contacts import DataFrameContacts
 import pipeline
 import validation
-from misc.nib_wrapper import NibCTWrapper
 import plot
 
 # External modules
@@ -210,7 +211,7 @@ def main(args: Namespace):
             contacts_world)
 
         # Getting ground_truths
-        ground_truth = utils.PipelineOutput.from_csv(
+        ground_truth = DataFrameContacts.from_csv(
             ground_truth_path)
         ground_truth_vox = ground_truth.get_vox_coordinates()
         ground_truth_world = nib_wrapper.convert_vox_to_world(

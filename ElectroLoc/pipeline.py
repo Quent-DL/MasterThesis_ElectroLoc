@@ -1,8 +1,9 @@
 # Local modules
 import utils
-from utils import log, PipelineOutput
+from utils import log
 from misc.nib_wrapper import NibCTWrapper
 from misc.electrode_information import ElectrodesInfo
+from misc.dataframe_contacts import DataFrameContacts
 import centroids_extraction
 import linear_modeling
 import postprocessing
@@ -30,7 +31,7 @@ def pipeline(
         recompute_centroids: bool = False,
         skip_postprocessing: bool = False,
         print_logs: bool = True
-) -> Tuple[PipelineOutput, List[ElectrodeModel]]:
+) -> Tuple[DataFrameContacts, List[ElectrodeModel]]:
     ### Preprocessing
     if print_logs: log("Preprocessing data")
     preprocess(nib_wrapper, electrode_threshold)
@@ -73,7 +74,7 @@ def pipeline(
             contacts_world, labels, nib_wrapper.get_center_world())
         
     ### Assembling the output
-    output = PipelineOutput(
+    output = DataFrameContacts(
         nib_wrapper.convert_world_to_vox(contacts_world),
         contacts_world,
         labels,
@@ -88,7 +89,7 @@ def pipeline_from_paths(
     ct_brainmask_path: Optional[str] = None,
     print_logs: bool = True,
     **kwargs
-) -> Tuple[PipelineOutput, List[ElectrodeModel]]:
+) -> Tuple[DataFrameContacts, List[ElectrodeModel]]:
     ### Loading the data
     if print_logs: log("Loading data")
     nib_wrapper = NibCTWrapper(ct_path, ct_brainmask_path)

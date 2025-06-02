@@ -5,6 +5,7 @@ import pipeline
 import postprocessing
 import linear_modeling
 from utils import *
+from misc.dataframe_contacts import DataFrameContacts
 from misc.nib_wrapper import NibCTWrapper
 from misc.electrode_information import ElectrodesInfo
 
@@ -19,7 +20,7 @@ SUB_IDS = [
 ]
 
 
-def get_data() -> list[tuple[NibCTWrapper, ElectrodesInfo, PipelineOutput]]:
+def get_data() -> list[tuple[NibCTWrapper, ElectrodesInfo, DataFrameContacts]]:
     data = []
     for subId in SUB_IDS:
         data_dir          = (f"{os.path.dirname(__file__)}/../data/{subId}/")
@@ -31,7 +32,7 @@ def get_data() -> list[tuple[NibCTWrapper, ElectrodesInfo, PipelineOutput]]:
             os.path.join(data_dir, "in/CT.nii.gz"), 
             os.path.join(data_dir, "in/CTMask.nii.gz"))
         elec_info = ElectrodesInfo(elec_info_path)
-        ground_truth = PipelineOutput.from_csv(ground_truth_path)
+        ground_truth = DataFrameContacts.from_csv(ground_truth_path)
 
         data.append((nib_wrapper, elec_info, ground_truth))
 
