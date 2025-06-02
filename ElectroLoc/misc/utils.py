@@ -1,6 +1,4 @@
 import numpy as np
-from numpy import cross
-from numpy.linalg import norm
 from datetime import datetime
 from typing import Tuple
 from sklearn.linear_model import LinearRegression

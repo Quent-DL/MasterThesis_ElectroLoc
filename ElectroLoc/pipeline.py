@@ -1,6 +1,5 @@
 # Local modules
-import utils
-from utils import log
+from misc.utils import log
 from misc.nib_wrapper import NibCTWrapper
 from misc.electrode_information import ElectrodesInfo
 from misc.dataframe_contacts import DataFrameContacts

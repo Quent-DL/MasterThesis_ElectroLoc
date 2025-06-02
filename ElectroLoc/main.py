@@ -1,6 +1,5 @@
 # Local modules
-import utils
-from utils import log
+from misc.utils import log, estimate_intercontact_distance
 from misc.nib_wrapper import NibCTWrapper
 from misc.dataframe_contacts import DataFrameContacts
 import pipeline
@@ -198,7 +197,7 @@ def main(args: Namespace):
         
         nib_wrapper.save_contacts_mask(
             output_nifti_path, contacts_vox, 
-            0.25*utils.estimate_intercontact_distance(contacts_vox))
+            0.25*estimate_intercontact_distance(contacts_vox))
 
     ##############################
     # Validation and plot
@@ -207,7 +206,7 @@ def main(args: Namespace):
     if ground_truth_path is not None:
         # Getting predicted contacts and inter-contact distance
         contacts_world = output.get_world_coordinates()
-        intercontact_dist_world = utils.estimate_intercontact_distance(
+        intercontact_dist_world = estimate_intercontact_distance(
             contacts_world)
 
         # Getting ground_truths

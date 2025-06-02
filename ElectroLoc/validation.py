@@ -4,7 +4,7 @@ results."""
 import pipeline
 import postprocessing
 import linear_modeling
-from utils import *
+from misc.utils import match_and_swap_labels, distance_matrix, estimate_intercontact_distance
 from misc.dataframe_contacts import DataFrameContacts
 from misc.nib_wrapper import NibCTWrapper
 from misc.electrode_information import ElectrodesInfo

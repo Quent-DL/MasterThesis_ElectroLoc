@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from typing import Optional, Self
+from pathlib import Path
 
 
 class DataFrameContacts(pd.DataFrame):
@@ -47,6 +48,14 @@ class DataFrameContacts(pd.DataFrame):
                 instance[key] = df[key]
         
         return instance
+    
+    def to_csv(self, path: str, *args, **kwargs) -> None:
+        # Ignore if no path given
+        if path is None: return
+        
+        # Creating parent directories if necessary
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        super().to_csv(path, *args, **kwargs)
             
     def set_vox_coordinates(self, coords: np.ndarray) -> None:
         """TODO write documentation"""

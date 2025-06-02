@@ -1,6 +1,7 @@
 import nibabel as nib
 import numpy as np
 from typing import Optional, Literal, Tuple
+from pathlib import Path
 
 class NibCTWrapper:
     def __init__(self, ct_path: str, ct_brainmask_path: str=None):
@@ -139,8 +140,12 @@ class NibCTWrapper:
             contacts_mask[c[0]-x_bfr: c[0]+x_aft+1, 
                           c[1]-y_bfr: c[1]+y_aft+1, 
                           c[2]-z_bfr: c[2]+z_aft+1] |= mask_box(center_box)
+            
+        # Simply return if no path given
+        if path is None: return contacts_mask
 
-        # Saving mask into Nifti file
+        # Saving mask into Nifti file, creating parent directories if necessary
         img = nib.nifti1.Nifti1Image(contacts_mask.astype(int), 
                                      self.affine, dtype=np.uint8)
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         nib.save(img, path)

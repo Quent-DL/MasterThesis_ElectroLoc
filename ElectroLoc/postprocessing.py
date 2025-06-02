@@ -1,4 +1,4 @@
-import utils
+from misc.utils import stable_marriage, estimate_intercontact_distance, distance_matrix
 from misc.electrode_information import ElectrodesInfo
 from misc.electrode_models import (ElectrodeModel, SegmentElectrodeModel, 
                               LinearElectrodeModel, compute_sRsquared)
@@ -163,7 +163,7 @@ def _match_labels_to_entry_points(
     # Shape (n_models, n_entry_points)   -> square matrix
     distances = np.stack(distances)
 
-    _, entrypoint_to_oldmodel = utils.stable_marriage(distances, maximize=False)
+    _, entrypoint_to_oldmodel = stable_marriage(distances, maximize=False)
 
     # Updating list of models
     # Source: https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
@@ -212,7 +212,7 @@ def _fit_contacts_onto_models(
         targets = model.get_sequence(nb_points, t0, intercontact_dist, gamma)
         # Distance between each point of the sequence, and its closest neighbor
         # among 'contacts'. Shape (nb_points, len(contacts)).
-        distances = utils.distance_matrix(targets, contacts).min(axis=1)
+        distances = distance_matrix(targets, contacts).min(axis=1)
         return np.sum(distances**2)
 
     new_contacts      = []
@@ -286,7 +286,7 @@ def postprocess(
     - models"""
 
     if intercontact_distance is None:
-        intercontact_distance = utils.estimate_intercontact_distance(contacts)
+        intercontact_distance = estimate_intercontact_distance(contacts)
     if ct_center is None:
         # TODO find better algorithm
         ct_center = contacts.mean(axis=0)

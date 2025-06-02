@@ -1,6 +1,6 @@
 """TODO write info"""
 
-from utils import distance_matrix, estimate_intercontact_distance
+from misc.utils import distance_matrix, estimate_intercontact_distance
 from misc.electrode_models import SegmentElectrodeModel, compute_sRsquared
 from misc.bfs import MultimodelFittingProblem, breadth_first_graph_search
 
