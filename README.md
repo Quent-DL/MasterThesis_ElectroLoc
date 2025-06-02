@@ -92,7 +92,7 @@ The fields produced are:
 
 #### Contact mask
 
-The parameter `-m` allows saving the result of the predicted contacts as a binary NiFTI file. At the time of writing this README, this feature outputs non-symmetrical blocks of voxels around the contacts. This could be fixed in future works.
+The parameter `-m` allows saving the result of the predicted contacts as a binary NIfTI file. At the time of writing this README, this feature outputs non-symmetrical blocks of voxels around the contacts. This could be fixed in future works.
 
 
 ## Content of the project
